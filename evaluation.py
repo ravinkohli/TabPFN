@@ -9,6 +9,8 @@ import pickle
 
 import os
 
+import time
+
 from eval_utils import Dataset, Results, arguments, do_evaluations_slurm, DEFAULT_SEED, HERE, METHODS, METRICS, eval_method, set_seed
 from tabpfn.scripts.tabular_metrics import (calculate_score, time_metric)
 
@@ -22,7 +24,7 @@ if __name__ == "__main__":
         args.test_datasets = "cc_test"
 
     # We need to create some directories for this to work
-    out_dir = os.path.join(args.result_path, "results", "tabular", "multiclass")
+    out_dir = os.path.join(args.result_path, "results", "tabular", "multiclass", f"{time.time()}")
     os.makedirs(out_dir, exist_ok=True
     )
 
@@ -36,7 +38,7 @@ if __name__ == "__main__":
     all_datasets = all_datasets
     # base_path = os.path.join('/work/dlclarge1/rkohli-results_tabpfn_180/results_1667931216')
 
-    print(args.result_path)
+    # print(args.result_path)
     if not args.load_predefined_results:
         result, jobs = do_evaluations_slurm(args, all_datasets, slurm=True)
     else:
