@@ -1032,12 +1032,12 @@ param_grid_hyperopt['lightgbm'] = {
     , 'reg_lambda': hp.choice('reg_lambda', [0, 1e-1, 1, 5, 10, 20, 50, 100])
 }  # 'normalize': [False],
 
-from lightgbm import LGBMClassifier
 
 def lightgbm_metric(x, y, test_x, test_y, cat_features, metric_used, seed, max_time=300, no_tune=None):
     x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y
                                              , one_hot=False, impute=False, standardize=False
                                              , cat_features=cat_features)
+    from lightgbm import LGBMClassifier
 
     def clf_(**params):
         return LGBMClassifier(categorical_feature=cat_features, use_missing=True
