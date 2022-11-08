@@ -11,6 +11,7 @@ import os
 
 from eval_utils import Dataset, Results, arguments, do_evaluations, DEFAULT_SEED, HERE, METHODS, METRICS, eval_method, set_seed
 
+from submitit.submitit import SlurmExecutor
 
 if __name__ == "__main__":
     args = arguments()
@@ -22,8 +23,8 @@ if __name__ == "__main__":
         args.test_datasets = "cc_test"
 
     # We need to create some directories for this to work
-    out_dir = os.path.join(args.result_path, "results", "tabular", "multiclass")
-    os.mkdir(out_dir,
+    args.result_path = os.path.join(args.result_path, "results", "tabular", "multiclass")
+    os.mkdir(args.result_path,
         parents=True, exist_ok=True
     )
 
@@ -35,9 +36,10 @@ if __name__ == "__main__":
 
     all_datasets = valid_datasets + test_datasets
     all_datasets = all_datasets
+    # base_path = os.path.join('/work/dlclarge1/rkohli-results_tabpfn_180/results_1667931216')
 
     if not args.load_predefined_results:
-        result = do_evaluations(args, all_datasets)
+        result, jobs = do_evaluations(args, all_datasets, slurm=True)
     else:
 
         def read(_path: Path) -> dict:
@@ -55,4 +57,7 @@ if __name__ == "__main__":
             recorded_metrics=args.recorded_metrics,
         )
 
-    result.df.to_csv(os.path.join(out_dir, "results.csv"), index=True)
+    for key in jobs:
+        result[key] = jobs[key].result()
+
+    result.df.to_csv(os.path.join(args.result_path, "results.csv"), index=True)

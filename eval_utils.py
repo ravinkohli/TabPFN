@@ -8,6 +8,7 @@ from functools import partial
 from itertools import product
 from pathlib import Path
 from typing import Callable
+import os
 
 import numpy as np
 import pandas as pd
@@ -22,6 +23,7 @@ from tabpfn.scripts.tabular_metrics import (accuracy_metric, auc_metric,
                                             brier_score_metric,
                                             calculate_score, cross_entropy,
                                             ece_metric, time_metric)
+from submitit.submitit import SlurmExecutor
 
 HERE = Path(__file__).parent.resolve().absolute()
 
@@ -69,6 +71,12 @@ PREDEFINED_DATASET_COLLECTIONS = {
         "path": PREDFINED_DATASET_PATHS / "cc_test_datasets_multiclass.pickle",
     },
 }
+
+
+class BoschSlurmExecutor(SlurmExecutor):
+    def _make_submission_command(self, submission_file_path):
+        return ["sbatch", str(submission_file_path), '--bosch']
+
 
 def set_seed(seed):
     # Setting up reproducibility
@@ -593,3 +601,61 @@ def do_evaluations(args: argparse.Namespace, datasets: list[Dataset]) -> Results
         datasets=datasets,
         recorded_metrics=args.recorded_metrics + ["time"],
     )
+
+def do_evaluations_slurm(args: argparse.Namespace, datasets, slurm: bool = False) -> Results:
+    results = {}
+    jobs = {}
+    for seed, method, metric, time, split in product(
+        args.seeds,
+        args.methods,
+        args.optimization_metrics,
+        args.times,
+        range(0, args.splits),
+    ):
+        set_seed(seed=seed)
+        metric_f = METRICS[metric]
+        metric_name = tb.get_scoring_string(metric_f, usage="")
+        key = f"{method}_time_{time}{metric_name}_split_{split}_seed_{seed}"
+
+        log_folder = os.path.join(args.result_path, "log_test/%j")
+
+        slurm_executer = BoschSlurmExecutor(folder=log_folder)
+        slurm_executer.update_parameters(time=time,
+                            partition="bosch_cpu-cascadelake",
+                            mem_per_cpu=6000,
+                            nodes=1,
+                            cpus_per_task=1,
+                            ntasks_per_node=1,
+                            #  setup=['export MKL_THREADING_LAYER=GNU']
+                            ) 
+        if not slurm:
+            results[key] = eval_method(
+            datasets=datasets,
+            label=method,
+            result_path=args.result_path,
+            classifier_evaluator=METHODS[method],
+            eval_positions=args.eval_positions,  # It's a constant basically
+            fetch_only=args.fetch_only,
+            verbose=args.verbose,
+            max_time=time,
+            metric_used=metric_f,
+            split=split,
+            seed=seed,
+            overwrite=args.overwrite,
+        )
+        else:
+            jobs[key] = slurm_executer.submit(slurm_executer.submit(eval_method,
+            datasets=datasets,
+            label=method,
+            result_path=args.result_path,
+            classifier_evaluator=METHODS[method],
+            eval_positions=args.eval_positions,  # It's a constant basically
+            fetch_only=args.fetch_only,
+            verbose=args.verbose,
+            max_time=time,
+            metric_used=metric_f,
+            split=split,
+            seed=seed,
+            overwrite=args.overwrite))
+
+    return results, jobs
