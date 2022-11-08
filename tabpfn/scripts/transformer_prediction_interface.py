@@ -96,7 +96,7 @@ def load_model_workflow(i, e, add_name, base_path, device='cpu', eval_addition='
 
 class TabPFNClassifier(BaseEstimator, ClassifierMixin):
 
-    def __init__(self, device='cpu', base_path=pathlib.Path(__file__).parent.parent.resolve(), model_string='', i=0, N_ensemble_configurations=3
+    def __init__(self, seed=42, device='cpu', base_path=pathlib.Path(__file__).parent.parent.resolve(), model_string='', i=0, N_ensemble_configurations=3
                  , combine_preprocessing=False, no_preprocess_mode=False, multiclass_decoder='permutation', feature_shift_decoder=True):
         # Model file specification (Model name, Epoch)
         i, e = i, -1
@@ -125,6 +125,7 @@ class TabPFNClassifier(BaseEstimator, ClassifierMixin):
         self.combine_preprocessing = combine_preprocessing
         self.feature_shift_decoder = feature_shift_decoder
         self.multiclass_decoder = multiclass_decoder
+        self.seed = seed
 
     def __getstate__(self):
         print('Pickle')
@@ -201,8 +202,9 @@ class TabPFNClassifier(BaseEstimator, ClassifierMixin):
                                          combine_preprocessing=self.combine_preprocessing,
                                          multiclass_decoder=self.multiclass_decoder,
                                          feature_shift_decoder=self.feature_shift_decoder,
-                                         differentiable_hps_as_style=self.differentiable_hps_as_style
-                                         , **get_params_from_config(self.c))
+                                         differentiable_hps_as_style=self.differentiable_hps_as_style,
+                                         seed=self.seed,
+                                         **get_params_from_config(self.c))
         prediction_, y_ = prediction.squeeze(0), y_full.squeeze(1).long()[eval_pos:]
 
         return prediction_.detach().cpu().numpy()
@@ -264,6 +266,8 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
     """
     num_classes = len(torch.unique(eval_ys))
 
+    seed = kwargs.get("seed", 42)
+    random_state = np.random.RandomState(seed)
     def predict(eval_xs, eval_ys, used_style, softmax_temperature, return_logits):
         # Initialize results array size S, B, Classes
 
@@ -288,7 +292,7 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
 
         return output
 
-    def preprocess_input(eval_xs, preprocess_transform):
+    def preprocess_input(eval_xs, preprocess_transform, random_state=None):
         import warnings
 
         if eval_xs.shape[1] > 1:
@@ -297,7 +301,7 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
             if preprocess_transform == 'power' or preprocess_transform == 'power_all':
                 pt = PowerTransformer(standardize=True)
             elif preprocess_transform == 'quantile' or preprocess_transform == 'quantile_all':
-                pt = QuantileTransformer(output_distribution='normal')
+                pt = QuantileTransformer(output_distribution='normal', random_state=random_state)
             elif preprocess_transform == 'robust' or preprocess_transform == 'robust_all':
                 pt = RobustScaler(unit_variance=True)
 
@@ -328,7 +332,8 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
         eval_xs = eval_xs.unsqueeze(1)
 
         # TODO: Cautian there is information leakage when to_ranking is used, we should not use it
-        eval_xs = remove_outliers(eval_xs, normalize_positions=-1 if normalize_with_test else eval_position) if not normalize_to_ranking else normalize_data(to_ranking_low_mem(eval_xs))
+        normalize_positions = -1 if normalize_with_test else eval_position
+        eval_xs = remove_outliers(eval_xs, normalize_positions=normalize_positions) if not normalize_to_ranking else normalize_data(to_ranking_low_mem(eval_xs))
         # Rescale X
         eval_xs = normalize_by_used_features_f(eval_xs, eval_xs.shape[-1], max_features,
                                                normalize_with_sqrt=normalize_with_sqrt)
@@ -374,8 +379,8 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
     ensemble_configurations = list(itertools.product(class_shift_configurations, feature_shift_configurations))
     #default_ensemble_config = ensemble_configurations[0]
 
-    rng = random.Random(0)
-    rng.shuffle(ensemble_configurations)
+    # rng = random.Random(0)
+    random_state.shuffle(ensemble_configurations)
     ensemble_configurations = list(itertools.product(ensemble_configurations, preprocess_transform_configurations, styles_configurations))
     ensemble_configurations = ensemble_configurations[0:N_ensemble_configurations]
     #if N_ensemble_configurations == 1:
@@ -398,15 +403,15 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
             eval_xs_ = eval_xs_transformed[preprocess_transform_configuration].clone()
         else:
             if eval_xs_.shape[-1] * 3 < max_features and combine_preprocessing:
-                eval_xs_ = torch.cat([preprocess_input(eval_xs_, preprocess_transform='power_all'),
-                            preprocess_input(eval_xs_, preprocess_transform='quantile_all')], -1)
+                eval_xs_ = torch.cat([preprocess_input(eval_xs_, preprocess_transform='power_all', random_state=random_state),
+                            preprocess_input(eval_xs_, preprocess_transform='quantile_all', random_state=random_state)], -1)
                 eval_xs_ = normalize_data(eval_xs_, normalize_positions=-1 if normalize_with_test else eval_position)
-                #eval_xs_ = torch.stack([preprocess_input(eval_xs_, preprocess_transform='power_all'),
-                #                        preprocess_input(eval_xs_, preprocess_transform='robust_all'),
-                #                        preprocess_input(eval_xs_, preprocess_transform='none')], -1)
+                #eval_xs_ = torch.stack([preprocess_input(eval_xs_, preprocess_transform='power_all', random_state=random_state),
+                #                        preprocess_input(eval_xs_, preprocess_transform='robust_all', random_state=random_state),
+                #                        preprocess_input(eval_xs_, preprocess_transform='none', random_state=random_state)], -1)
                 #eval_xs_ = torch.flatten(torch.swapaxes(eval_xs_, -2, -1), -2)
             else:
-                eval_xs_ = preprocess_input(eval_xs_, preprocess_transform=preprocess_transform_configuration)
+                eval_xs_ = preprocess_input(eval_xs_, preprocess_transform=preprocess_transform_configuration, random_state=random_state)
             eval_xs_transformed[preprocess_transform_configuration] = eval_xs_
 
         eval_ys_ = ((eval_ys_ + class_shift_configuration) % num_classes).float()

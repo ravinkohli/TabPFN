@@ -16,7 +16,7 @@ param_grid['saint'] = {
     "dropout": [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
 }
 
-def saint_metric(x, y, test_x, test_y, cat_features, metric_used):
+def saint_metric(x, y, test_x, test_y, cat_features, metric_used, seed):
     ## Original Implementation https://github.com/somepago/saint
     ## Reimplementation from https://github.com/kathrinse/TabSurvey
     ## HowTo install

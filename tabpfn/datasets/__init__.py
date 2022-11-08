@@ -3,13 +3,14 @@ import torch
 import numpy as np
 import openml
 
+from tabpfn.constants import DEFAULT_SEED
 
-def get_openml_classification(did, max_samples, multiclass=True, shuffled=True):
+
+def get_openml_classification(did, max_samples, random_state=None, multiclass=True, shuffled=True):
     dataset = openml.datasets.get_dataset(did)
     X, y, categorical_indicator, attribute_names = dataset.get_data(
         dataset_format="array", target=dataset.default_target_attribute
     )
-    
 
     if not multiclass:
         X = X[y < 2]
@@ -30,22 +31,23 @@ def get_openml_classification(did, max_samples, multiclass=True, shuffled=True):
         X = torch.tensor(X).reshape(2, -1, X.shape[1]).transpose(0, 1).reshape(-1, X.shape[1]).flip([0]).float()
     else:
         order = np.arange(y.shape[0])
-        np.random.seed(13)
-        np.random.shuffle(order)
+        random_state = random_state if random_state is not None else np.random.RandomState(DEFAULT_SEED)
+        random_state.shuffle(order)
         X, y = torch.tensor(X[order]), torch.tensor(y[order])
     if max_samples:
         X, y = X[:max_samples], y[:max_samples]
 
     return X, y, list(np.where(categorical_indicator)[0]), attribute_names
 
-def load_openml_list(dids, filter_for_nan=False
-                     , num_feats=100
-                     , min_samples = 100
-                     , max_samples=400
-                     , multiclass=True
-                     , max_num_classes=10
-                     , shuffled=True
-                     , return_capped = False):
+def load_openml_list(dids, random_state=None,
+                     filter_for_nan=False,
+                     num_feats=100,
+                     min_samples = 100,
+                     max_samples=400,
+                     multiclass=True,
+                     max_num_classes=10,
+                     shuffled=True,
+                     return_capped=False):
     datasets = []
     openml_list = openml.datasets.list_datasets(dids)
     print(f'Number of datasets: {len(openml_list)}')
@@ -65,8 +67,10 @@ def load_openml_list(dids, filter_for_nan=False
             raise Exception("Regression not supported")
             #X, y, categorical_feats, attribute_names = get_openml_regression(int(entry.did), max_samples)
         else:
-            X, y, categorical_feats, attribute_names = get_openml_classification(int(entry.did), max_samples
-                                                                , multiclass=multiclass, shuffled=shuffled)
+            X, y, categorical_feats, attribute_names = get_openml_classification(int(entry.did), max_samples,
+                                                                                 multiclass=multiclass,
+                                                                                 shuffled=shuffled,
+                                                                                 random_state=random_state)
         if X is None:
             continue
 
