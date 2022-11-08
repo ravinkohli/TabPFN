@@ -595,17 +595,6 @@ def do_evaluations_slurm(args: argparse.Namespace, datasets, slurm: bool = False
         metric_name = tb.get_scoring_string(metric_f, usage="")
         key = f"{method}_time_{time}{metric_name}_split_{split}_seed_{seed}"
 
-        log_folder = os.path.join(args.result_path, "log_test/")
-
-        slurm_executer = BoschSlurmExecutor(folder=log_folder)
-        slurm_executer.update_parameters(time=int(30),
-                            partition="bosch_cpu-cascadelake",
-                            mem_per_cpu=6000,
-                            nodes=1,
-                            cpus_per_task=1,
-                            ntasks_per_node=1,
-                            #  setup=['export MKL_THREADING_LAYER=GNU']
-                            ) 
         if not slurm:
             results[key] = eval_method(
             datasets=datasets,
@@ -622,6 +611,17 @@ def do_evaluations_slurm(args: argparse.Namespace, datasets, slurm: bool = False
             overwrite=args.overwrite,
         )
         else:
+            log_folder = os.path.join(args.result_path, "log_test/")
+
+            slurm_executer = BoschSlurmExecutor(folder=log_folder)
+            slurm_executer.update_parameters(time=int(30),
+                                partition="bosch_cpu-cascadelake",
+                                mem_per_cpu=6000,
+                                nodes=1,
+                                cpus_per_task=1,
+                                ntasks_per_node=1,
+                                #  setup=['export MKL_THREADING_LAYER=GNU']
+                                ) 
             jobs[key] = slurm_executer.submit(eval_method,
             datasets=datasets,
             label=method,
