@@ -10,7 +10,7 @@ import pickle
 import os
 
 from eval_utils import Dataset, Results, arguments, do_evaluations_slurm, DEFAULT_SEED, HERE, METHODS, METRICS, eval_method, set_seed
-
+from tabpfn.scripts.tabular_metrics import (calculate_score, time_metric)
 
 if __name__ == "__main__":
     args = arguments()
@@ -58,4 +58,31 @@ if __name__ == "__main__":
     for key in jobs:
         result[key] = jobs[key].result()
 
-    result.df.to_csv(os.path.join(args.result_path, "results.csv"), index=True)
+    datasets_as_lists = [d.as_list() for d in all_datasets]
+
+    # This will update the results in place
+    for metric in args.recorded_metrics:
+        metric_f = METRICS[metric]
+        calculate_score(
+            metric=metric_f,
+            name=metric,
+            global_results=result,
+            ds=datasets_as_lists,
+            eval_positions=args.eval_positions,
+        )
+
+    # We also get the times
+    calculate_score(
+        metric=time_metric,
+        name="time",
+        global_results=result,
+        ds=datasets_as_lists,
+        eval_positions=args.eval_positions,
+    )
+    final_results = Results.from_dict(
+            result,
+            datasets=all_datasets,
+            recorded_metrics=args.recorded_metrics + ["time"],
+        )
+    final_results.df.to_csv(os.path.join(args.result_path, "results.csv"), index=True)
+    # result.df.to_csv(os.path.join(args.result_path, "results.csv"), index=True)

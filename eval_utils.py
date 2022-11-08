@@ -48,30 +48,6 @@ PREDEFINED_DATASET_COLLECTIONS = {
     },
 }
 
-DEFAULT_SEED = 42
-
-HERE = Path(__file__).parent.resolve().absolute()
-
-METRICS = {
-    "roc": auc_metric,
-    "cross_entropy": cross_entropy,
-    "acc": accuracy_metric,
-    "brier_score": brier_score_metric,
-    "ece": ece_metric,
-}
-
-PREDFINED_DATASET_PATHS = HERE / "tabpfn" / "datasets"
-PREDEFINED_DATASET_COLLECTIONS = {
-    "cc_valid": {
-        "ids": open_cc_valid_dids,
-        "path": PREDFINED_DATASET_PATHS / "cc_valid_datasets_multiclass.pickle",
-    },
-    "cc_test": {
-        "ids": open_cc_dids,
-        "path": PREDFINED_DATASET_PATHS / "cc_test_datasets_multiclass.pickle",
-    },
-}
-
 
 class BoschSlurmExecutor(SlurmExecutor):
     def _make_submission_command(self, submission_file_path):
