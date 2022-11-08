@@ -75,6 +75,7 @@ PREDEFINED_DATASET_COLLECTIONS = {
 
 class BoschSlurmExecutor(SlurmExecutor):
     def _make_submission_command(self, submission_file_path):
+        print(submission_file_path)
         return ["sbatch", str(submission_file_path), '--bosch']
 
 
