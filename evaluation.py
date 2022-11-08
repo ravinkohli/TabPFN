@@ -11,7 +11,6 @@ import os
 
 from eval_utils import Dataset, Results, arguments, do_evaluations_slurm, DEFAULT_SEED, HERE, METHODS, METRICS, eval_method, set_seed
 
-from submitit.submitit import SlurmExecutor
 
 if __name__ == "__main__":
     args = arguments()
