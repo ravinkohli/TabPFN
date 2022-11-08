@@ -518,7 +518,7 @@ def arguments() -> argparse.Namespace:
     parser.add_argument("--plots", type=Path, help="Where to output plots to")
     parser.add_argument("--load_predefined_results", action="store_true")
     parser.add_argument(
-        "--predefined_results_path", type=Path, default=PREDEFINED_RESULTS_PATH
+        "--predefined_results_path", type=Path, default=PREDFINED_DATASET_PATHS
     )
     return parser.parse_args()
 
