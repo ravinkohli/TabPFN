@@ -374,8 +374,8 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
 
     preprocess_transform_configurations = ['none', 'power_all'] if preprocess_transform == 'mix' else [preprocess_transform]
 
-    feature_shift_configurations = random_state.choice(eval_xs.shape[2]) if feature_shift_decoder else [0]
-    class_shift_configurations = random_state.choice(len(torch.unique(eval_ys))) if multiclass_decoder == 'permutation' else [0]
+    feature_shift_configurations = torch.randperm(eval_xs.shape[2]) if feature_shift_decoder else [0]
+    class_shift_configurations = torch.randperm(len(torch.unique(eval_ys))) if multiclass_decoder == 'permutation' else [0]
 
     ensemble_configurations = list(itertools.product(class_shift_configurations, feature_shift_configurations))
     #default_ensemble_config = ensemble_configurations[0]
@@ -407,9 +407,9 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
                 eval_xs_ = torch.cat([preprocess_input(eval_xs_, preprocess_transform='power_all', random_state=random_state),
                             preprocess_input(eval_xs_, preprocess_transform='quantile_all', random_state=random_state)], -1)
                 eval_xs_ = normalize_data(eval_xs_, normalize_positions=-1 if normalize_with_test else eval_position)
-                #eval_xs_ = torch.stack([preprocess_input(eval_xs_, preprocess_transform='power_all', random_state=random_state),
-                #                        preprocess_input(eval_xs_, preprocess_transform='robust_all', random_state=random_state),
-                #                        preprocess_input(eval_xs_, preprocess_transform='none', random_state=random_state)], -1)
+                #eval_xs_ = torch.stack([preprocess_input(eval_xs_, preprocess_transform='power_all'),
+                #                        preprocess_input(eval_xs_, preprocess_transform='robust_all'),
+                #                        preprocess_input(eval_xs_, preprocess_transform='none')], -1)
                 #eval_xs_ = torch.flatten(torch.swapaxes(eval_xs_, -2, -1), -2)
             else:
                 eval_xs_ = preprocess_input(eval_xs_, preprocess_transform=preprocess_transform_configuration, random_state=random_state)
