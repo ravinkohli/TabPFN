@@ -1,6 +1,9 @@
 import tqdm
 import numpy as np
 
+from tabpfn.constants import DEFAULT_SEED
+
+
 def baseline_predict(metric_function, eval_xs, eval_ys, categorical_feats, metric_used=None, eval_pos=2, max_time=300, **kwargs):
     """
     Baseline prediction interface.
@@ -26,8 +29,9 @@ def baseline_predict(metric_function, eval_xs, eval_ys, categorical_feats, metri
                                                           eval_x[eval_pos:],
                                                           eval_y[eval_pos:],
                                                           categorical_feats,
-                                                          metric_used=metric_used
-                                                          , max_time=max_time)
+                                                          metric_used=metric_used,
+                                                          seed=kwargs.get("seed", DEFAULT_SEED),
+                                                          max_time=max_time)
             metrics += [metric]
             outputs += [output]
             best_configs += [best_config]

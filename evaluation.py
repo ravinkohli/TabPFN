@@ -10,7 +10,7 @@ import tabpfn.scripts.tabular_baselines as tb
 from tabpfn.scripts.tabular_metrics import (calculate_score, count_metric,
                                             time_metric)
 
-from eval_utils import Dataset, DEFAULT_SEED, HERE, METHODS, METRICS, N_SPLITS, eval_method, set_seed
+from eval_utils import Dataset, DEFAULT_SEED, HERE, METHODS, METRICS, eval_method, set_seed
 
 
 if __name__ == "__main__":
@@ -139,6 +139,7 @@ if __name__ == "__main__":
         set_seed(seed=seed)
 
         for split_id in range(args.splits):
+            print(f"Running split_{split_id}")
             key += f"_split_{split_id}"
             results[key] = eval_method(
                 datasets=all_datasets,
