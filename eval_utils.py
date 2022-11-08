@@ -249,4 +249,5 @@ def eval_method(
         verbose=verbose,
         max_time=max_time,
         seed=seed,
+        split_id=split_id
     )

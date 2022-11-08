@@ -7,6 +7,7 @@ from torch.utils.checkpoint import checkpoint
 from tabpfn.utils import normalize_data, to_ranking_low_mem, remove_outliers
 from tabpfn.priors.utils import normalize_by_used_features_f
 from tabpfn.utils import NOP
+from tabpfn.constants import DEFAULT_SEED
 
 from sklearn.preprocessing import PowerTransformer, QuantileTransformer, RobustScaler
 
@@ -96,7 +97,7 @@ def load_model_workflow(i, e, add_name, base_path, device='cpu', eval_addition='
 
 class TabPFNClassifier(BaseEstimator, ClassifierMixin):
 
-    def __init__(self, seed=42, device='cpu', base_path=pathlib.Path(__file__).parent.parent.resolve(), model_string='', i=0, N_ensemble_configurations=3
+    def __init__(self, seed=DEFAULT_SEED, device='cpu', base_path=pathlib.Path(__file__).parent.parent.resolve(), model_string='', i=0, N_ensemble_configurations=3
                  , combine_preprocessing=False, no_preprocess_mode=False, multiclass_decoder='permutation', feature_shift_decoder=True):
         # Model file specification (Model name, Epoch)
         i, e = i, -1
@@ -266,7 +267,7 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
     """
     num_classes = len(torch.unique(eval_ys))
 
-    seed = kwargs.get("seed", 42)
+    seed = kwargs.get("seed", DEFAULT_SEED)
     random_state = np.random.RandomState(seed)
     def predict(eval_xs, eval_ys, used_style, softmax_temperature, return_logits):
         # Initialize results array size S, B, Classes
@@ -373,8 +374,8 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
 
     preprocess_transform_configurations = ['none', 'power_all'] if preprocess_transform == 'mix' else [preprocess_transform]
 
-    feature_shift_configurations = torch.randperm(eval_xs.shape[2]) if feature_shift_decoder else [0]
-    class_shift_configurations = torch.randperm(len(torch.unique(eval_ys))) if multiclass_decoder == 'permutation' else [0]
+    feature_shift_configurations = random_state.choice(eval_xs.shape[2]) if feature_shift_decoder else [0]
+    class_shift_configurations = random_state.choice(len(torch.unique(eval_ys))) if multiclass_decoder == 'permutation' else [0]
 
     ensemble_configurations = list(itertools.product(class_shift_configurations, feature_shift_configurations))
     #default_ensemble_config = ensemble_configurations[0]

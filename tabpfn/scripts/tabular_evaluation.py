@@ -133,8 +133,8 @@ def evaluate(
             eval_position_bptt = int(eval_position_real * 2.0)
 
             r = evaluate_position(
-                X,
-                y,
+                X=X,
+                y=y,
                 model=model,
                 num_classes=len(torch.unique(y)),
                 categorical_feats=categorical_feats,
@@ -143,7 +143,7 @@ def evaluate(
                 eval_position=eval_position_real,
                 metric_used=metric_used,
                 device=device,
-                *kwargs
+                **kwargs
             )
 
             if r is None:
@@ -207,7 +207,7 @@ def check_file_exists(path):
             return np.load(f, allow_pickle=True).tolist()
     return None
 
-def generate_valid_split(X, y, bptt, eval_position, is_classification, seed):
+def generate_valid_split(X, y, bptt, eval_position, is_classification, split_id=1, seed=DEFAULT_SEED):
     """Generates a deteministic train-(test/valid) split. Both splits must contain the same classes and all classes in
     the entire datasets. If no such split can be sampled in 7 passes, returns None.
 
@@ -215,22 +215,23 @@ def generate_valid_split(X, y, bptt, eval_position, is_classification, seed):
     :param y: torch tensor, class values
     :param bptt: Number of samples in train + test
     :param eval_position: Number of samples in train, i.e. from which index values are in test
-    :param split_number: The split id
+    :param split_id: The split id
     :return:
     """
     done = False
+    seed = 13
 
-    rng = np.random.RandomState(seed)
-
-    perm = torch.randperm(X.shape[0])  # if split_number > 1 else torch.arange(0, X.shape[0])
+    original_seed = seed
+    torch.manual_seed(seed)
+    perm = torch.randperm(X.shape[0]) if split_id > 1 else torch.arange(0, X.shape[0])
     X, y = X[perm], y[perm]
-    i = 0
+    # i = 0
     while not done:
-        if i >= N_PASSES:
+        if seed >= original_seed + N_PASSES:
             return None, None # No split could be generated in N_PASSES passes, return None
-        # random.seed(seed)
-        start_index = rng.randint(0, len(X) - bptt)
-        start_index = start_index if len(X) - bptt > 0 else 0
+        np.random.seed(seed=seed)
+        # random_state = np.random.RandomState(seed)
+        start_index = np.random.randint(0, len(X) - bptt) if len(X) - bptt > 0 else 0
         y_ = y[start_index:start_index + bptt]
 
         if is_classification:
@@ -240,7 +241,7 @@ def generate_valid_split(X, y, bptt, eval_position, is_classification, seed):
             done = done and torch.all(torch.unique(y_) == torch.unique(y))
             done = done and len(torch.unique(y_[:eval_position])) == len(torch.unique(y_[eval_position:]))
             done = done and torch.all(torch.unique(y_[:eval_position]) == torch.unique(y_[eval_position:]))
-            seed = seed + 1
+            seed += 1
         else:
             done = True
 
@@ -312,7 +313,8 @@ def evaluate_position(
     ## Generate data splits
     eval_xs, eval_ys = generate_valid_split(X, y, bptt, eval_position,
                                             is_classification=tabular_metrics.is_classification(metric_used),
-                                            split_id=split_id, seed=seed)
+                                            split_id=split_id,
+                                            seed=seed)
     if eval_xs is None:
         print(f"No dataset could be generated {ds_name} {bptt}")
         return None
