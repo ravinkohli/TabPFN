@@ -9,7 +9,7 @@ import pickle
 
 import os
 
-from eval_utils import Dataset, Results, arguments, do_evaluations, DEFAULT_SEED, HERE, METHODS, METRICS, eval_method, set_seed
+from eval_utils import Dataset, Results, arguments, do_evaluations_slurm, DEFAULT_SEED, HERE, METHODS, METRICS, eval_method, set_seed
 
 from submitit.submitit import SlurmExecutor
 
@@ -39,7 +39,7 @@ if __name__ == "__main__":
     # base_path = os.path.join('/work/dlclarge1/rkohli-results_tabpfn_180/results_1667931216')
 
     if not args.load_predefined_results:
-        result, jobs = do_evaluations(args, all_datasets, slurm=True)
+        result, jobs = do_evaluations_slurm(args, all_datasets, slurm=True)
     else:
 
         def read(_path: Path) -> dict:
