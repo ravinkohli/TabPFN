@@ -22,8 +22,8 @@ if __name__ == "__main__":
         args.test_datasets = "cc_test"
 
     # We need to create some directories for this to work
-    args.result_path = os.path.join(args.result_path, "results", "tabular", "multiclass")
-    os.makedirs(args.result_path, exist_ok=True
+    out_dir = os.path.join(args.result_path, "results", "tabular", "multiclass")
+    os.makedirs(out_dir, exist_ok=True
     )
 
     # We ignore the flags datasets
@@ -36,6 +36,7 @@ if __name__ == "__main__":
     all_datasets = all_datasets
     # base_path = os.path.join('/work/dlclarge1/rkohli-results_tabpfn_180/results_1667931216')
 
+    print(args.result_path)
     if not args.load_predefined_results:
         result, jobs = do_evaluations_slurm(args, all_datasets, slurm=True)
     else:
@@ -84,5 +85,5 @@ if __name__ == "__main__":
             datasets=all_datasets,
             recorded_metrics=args.recorded_metrics + ["time"],
         )
-    final_results.df.to_csv(os.path.join(args.result_path, "results.csv"), index=True)
+    final_results.df.to_csv(os.path.join(out_dir, "results.csv"), index=True)
     # result.df.to_csv(os.path.join(args.result_path, "results.csv"), index=True)
