@@ -23,7 +23,7 @@ if __name__ == "__main__":
 
     # We need to create some directories for this to work
     args.result_path = os.path.join(args.result_path, "results", "tabular", "multiclass")
-    os.mkdir(args.result_path, exist_ok=True
+    os.mkdir(args.result_path, exists_ok=True
     )
 
     # We ignore the flags datasets
