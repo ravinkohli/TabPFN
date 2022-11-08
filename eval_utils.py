@@ -23,7 +23,7 @@ from tabpfn.scripts.tabular_metrics import (accuracy_metric, auc_metric,
                                             brier_score_metric,
                                             calculate_score, cross_entropy,
                                             ece_metric, time_metric)
-from submitit.submitit import SlurmExecutor
+from submitit import SlurmExecutor
 
 HERE = Path(__file__).parent.resolve().absolute()
 
