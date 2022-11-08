@@ -7,6 +7,7 @@ import numpy as np
 
 import pickle
 
+import os
 
 from eval_utils import Dataset, Results, arguments, do_evaluations, DEFAULT_SEED, HERE, METHODS, METRICS, eval_method, set_seed
 
@@ -21,7 +22,8 @@ if __name__ == "__main__":
         args.test_datasets = "cc_test"
 
     # We need to create some directories for this to work
-    (args.result_path / "results" / "tabular" / "multiclass").mkdir(
+    out_dir = os.path.join(args.result_path, "results", "tabular", "multiclass")
+    os.mkdir(out_dir,
         parents=True, exist_ok=True
     )
 
@@ -53,4 +55,4 @@ if __name__ == "__main__":
             recorded_metrics=args.recorded_metrics,
         )
 
-    df = result.df
+    result.df.to_csv(os.path.join(out_dir, "results.csv"), index=True)

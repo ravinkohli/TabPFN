@@ -207,6 +207,7 @@ class Results:
             r"_time_(?P<time>\d+(\.\d+)?)"
             r"(_)?(?P<metric>\w+)"
             r"_split_(?P<split>\d+)"
+            r"_seed_?(?P<seed>\d+)"
         )
 
         groups = []
@@ -219,11 +220,12 @@ class Results:
 
         matches = pd.DataFrame(groups)
 
-        # The unique, methods, times, metrics and splits present
+        # The unique methods, times, metrics, splits and seeds present
         methods = list(matches["method"].unique())
         times = list(matches["time"].astype(float).unique())
         metrics = list(matches["metric"].unique())
         splits = list(matches["split"].astype(int).unique())
+        seeds = list(matches["seed"].astype(int).unique())
 
         # Next we extract all the eval_positions
         _eval_positions = set()
@@ -258,14 +260,14 @@ class Results:
                 v[best_config_key] = np.nan
 
         index = pd.MultiIndex.from_product(
-            [methods, times, splits, metrics, eval_positions],
-            names=["method", "time", "split", "optimization_metric", "eval_position"],
+            [methods, metrics, times, eval_positions, seeds, splits],
+            names=["method", "optimization_metric", "time", "eval_position", "seed", "split"],
         )
 
         metrics = recorded_metrics + ["time", "inference_time", "fit_time"]
         columns = pd.MultiIndex.from_product(
-            [dataset_names, metrics],
-            names=["dataset", "metric"],
+            [metrics, dataset_names],
+            names=["metric", "dataset"],
         )
 
         df = pd.DataFrame(columns=columns, index=index)
@@ -279,10 +281,11 @@ class Results:
             method = match.group("method")
             time = float(match.group("time"))
             opt_metric = match.group("metric")
+            seed = int(match.group("seed"))
             split = int(match.group("split"))
 
             for dataset, metric, pos in product(dataset_names, metrics, eval_positions):
-                row = (method, time, split, opt_metric, int(pos))
+                row = (method, opt_metric, time, int(pos), seed, split)
                 col = (dataset, metric)
 
                 value = v.get(f"{dataset}_{metric}_at_{pos}", np.nan)
@@ -294,6 +297,42 @@ class Results:
             df = df[df.any(axis=1)]
 
         return Results(df)
+
+    def at(
+        self,
+        *,
+        method: str | list[str] | None = None,
+        time: float | list[float] | None = None,
+        split: int | list[int] | None = None,
+        eval_position: int | list[int] | None = None,
+        dataset: str | list[str] | None = None,
+    ) -> Results:
+        df = self.df
+        items = {
+            "method": method,
+            "time": time,
+            "split": split,
+            "eval_position": eval_position,
+        }
+        for name, item in items.items():
+            if item is None:
+                continue
+            idx: list = item if isinstance(item, list) else [item]
+            df = df[df.index.get_level_values(name).isin(idx)]
+
+        if dataset:
+            dataset = dataset if isinstance(dataset, list) else [dataset]
+            df = df[dataset]
+
+        return Results(df)
+
+    def summary(self) -> pd.DataFrame:
+        per_dataset_mean_std = self.df.groupby(
+            ["method", "optimization_metric", "time", "eval_position"],
+            axis="index",
+        ).agg(["mean", "std"])
+        overal_mean_std = self.df.groupby()
+
 
 
 # Predefined methods with `no_tune={}` inidicating they are not tuned
@@ -316,6 +355,8 @@ METHODS = {
     # xgb
     "xgb": clf_dict["xgb"],
     "xgb_default": partial(clf_dict["xgb"], no_tune={}),
+    "xgb_default_gpu": partial(clf_dict['xgb'], no_tune={}, gpu_id=0),
+    "xgb_gpu": partial(clf_dict['xgb'], gpu_id=0),
     # random forest
     "random_forest": clf_dict["random_forest"],
     "rf_default": partial(clf_dict["random_forest"], no_tune={}),
@@ -423,7 +464,7 @@ def arguments() -> argparse.Namespace:
     parser.add_argument(
         "--seeds",
         nargs="+",
-        type=float,
+        type=int,
         default=[DEFAULT_SEED],
         help="Seeds to evaluate",
     )
@@ -505,6 +546,7 @@ def do_evaluations(args: argparse.Namespace, datasets: list[Dataset]) -> Results
         args.times,
         range(0, args.splits),
     ):
+        set_seed(seed=seed)
         metric_f = METRICS[metric]
         metric_name = tb.get_scoring_string(metric_f, usage="")
         key = f"{method}_time_{time}{metric_name}_split_{split}_seed_{seed}"
