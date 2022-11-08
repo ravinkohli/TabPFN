@@ -614,7 +614,7 @@ def do_evaluations_slurm(args: argparse.Namespace, datasets, slurm: bool = False
             log_folder = os.path.join(args.result_path, "log_test/")
 
             slurm_executer = BoschSlurmExecutor(folder=log_folder)
-            slurm_executer.update_parameters(time=int(30),
+            slurm_executer.update_parameters(time=int(time),
                                 partition="bosch_cpu-cascadelake",
                                 mem_per_cpu=6000,
                                 nodes=1,
