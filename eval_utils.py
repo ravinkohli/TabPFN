@@ -25,6 +25,8 @@ from tabpfn.scripts.tabular_metrics import (accuracy_metric, auc_metric,
                                             ece_metric, time_metric)
 from submitit import SlurmExecutor
 
+DEFAULT_SEED = 42
+
 HERE = Path(__file__).parent.resolve().absolute()
 
 METRICS = {
@@ -35,7 +37,6 @@ METRICS = {
     "ece": ece_metric,
 }
 
-PREDEFINED_RESULTS_PATH = HERE / "TabPFNResults" / "all_results"
 PREDFINED_DATASET_PATHS = HERE / "tabpfn" / "datasets"
 PREDEFINED_DATASET_COLLECTIONS = {
     "cc_valid": {
