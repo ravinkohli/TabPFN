@@ -644,7 +644,7 @@ def do_evaluations_slurm(args: argparse.Namespace, datasets, slurm: bool = False
             overwrite=args.overwrite,
         )
         else:
-            jobs[key] = slurm_executer.submit(slurm_executer.submit(eval_method,
+            jobs[key] = slurm_executer.submit(eval_method,
             datasets=datasets,
             label=method,
             result_path=args.result_path,
@@ -656,6 +656,6 @@ def do_evaluations_slurm(args: argparse.Namespace, datasets, slurm: bool = False
             metric_used=metric_f,
             split=split,
             seed=seed,
-            overwrite=args.overwrite))
+            overwrite=args.overwrite)
 
     return results, jobs
