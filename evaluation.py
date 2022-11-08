@@ -3,11 +3,14 @@ from __future__ import annotations
 from itertools import product
 from pathlib import Path
 
+import numpy as np
+
+
 import tabpfn.scripts.tabular_baselines as tb
 from tabpfn.scripts.tabular_metrics import (calculate_score, count_metric,
                                             time_metric)
 
-from eval_utils import Dataset, HERE, METHODS, METRICS, eval_method
+from eval_utils import Dataset, DEFAULT_SEED, HERE, METHODS, METRICS, N_SPLITS, eval_method, set_seed
 
 
 if __name__ == "__main__":
@@ -29,10 +32,17 @@ if __name__ == "__main__":
         help="Times to evaluate (seconds)",
     )
     parser.add_argument(
+        "--seeds",
+        nargs="+",
+        type=int,
+        default=[DEFAULT_SEED],
+        help="Seeds to evaluate on",
+    )
+    parser.add_argument(
         "--splits",
         type=int,
         default=5,
-        help="The splits to evaluate",
+        help="The number of splits to evaluate",
     )
 
     parser.add_argument(
@@ -115,29 +125,36 @@ if __name__ == "__main__":
     all_datasets = all_datasets[:2]
 
     results = {}
-    for method, metric, time, split in product(
+    for seed, method, metric, time in product(
+        args.seeds,
         args.methods,
         args.optimization_metrics,
         args.times,
-        range(0, args.splits),
     ):
         metric_f = METRICS[metric]
         metric_name = tb.get_scoring_string(metric_f, usage="")
-        key = f"{method}_time_{time}_{metric_name}_split_{split}"
 
-        results[key] = eval_method(
-            datasets=all_datasets,
-            label=method,
-            result_path=args.result_path,
-            classifier_evaluator=METHODS[method],
-            eval_positions=[1_000],  # It's a constant basically
-            fetch_only=args.fetch_only,
-            verbose=args.verbose,
-            max_time=time,
-            metric_used=metric_f,
-            split=split,
-            overwrite=args.overwrite,
-        )
+        key = f"{method}_time_{time}_{metric_name}"
+
+        set_seed(seed=seed)
+
+        for split_id in range(args.splits):
+            key += f"_split_{split_id}"
+            results[key] = eval_method(
+                datasets=all_datasets,
+                label=method,
+                result_path=args.result_path,
+                classifier_evaluator=METHODS[method],
+                eval_positions=[1_000],  # It's a constant basically
+                fetch_only=args.fetch_only,
+                verbose=args.verbose,
+                max_time=time,
+                metric_used=metric_f,
+                split_id=split_id,
+                overwrite=args.overwrite,
+                seed=seed,
+                bptt=args.bptt,
+            )
 
     all_datasets_as_lists = [d.as_list() for d in all_datasets]
     # This will update the results in place
@@ -171,4 +188,4 @@ if __name__ == "__main__":
         aggregator="sum",
     )
 
-    print(results)
+    # print(results)

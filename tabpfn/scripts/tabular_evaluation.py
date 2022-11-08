@@ -3,19 +3,26 @@ import os
 from pathlib import Path
 from contextlib import nullcontext
 
+
+from sklearn.model_selection import RepeatedStratifiedKFold
+
 import torch
 from tqdm import tqdm
+
 import random
 import numpy as np
 
 from torch import nn
 
+from tabpfn.constants import DEFAULT_SEED, N_PASSES
 from torch.utils.checkpoint import checkpoint
 from tabpfn.utils import normalize_data, torch_nanmean, to_ranking_low_mem, remove_outliers
 from tabpfn.scripts.tabular_baselines import get_scoring_string
 from tabpfn.scripts import tabular_metrics
 from tabpfn.scripts.transformer_prediction_interface import *
 from tabpfn.scripts.baseline_prediction_interface import *
+
+
 """
 ===============================
 PUBLIC FUNCTIONS FOR EVALUATION
@@ -79,10 +86,17 @@ def eval_model_on_ds(i, e, valid_datasets, eval_positions, bptt, add_name, base_
     return metrics_valid, config_sample, model_path
 
 
-def evaluate(datasets, bptt, eval_positions, metric_used, model, device='cpu'
-             , verbose=False
-             , return_tensor=False
-             , **kwargs):
+def evaluate(
+    datasets,
+    bptt,
+    eval_positions,
+    metric_used,
+    model,
+    device='cpu',
+    verbose=False,
+    return_tensor=False,
+    **kwargs
+):
     """
     Evaluates a list of datasets for a model function.
 
@@ -95,9 +109,11 @@ def evaluate(datasets, bptt, eval_positions, metric_used, model, device='cpu'
     :param kwargs:
     :return:
     """
-    overall_result = {'metric_used': get_scoring_string(metric_used)
-                      , 'bptt': bptt
-                      , 'eval_positions': eval_positions}
+    overall_result = {
+        'metric_used': get_scoring_string(metric_used),
+        'bptt': bptt,
+        'eval_positions': eval_positions
+    }
 
     aggregated_metric_datasets, num_datasets = torch.tensor(0.0), 0
 
@@ -110,19 +126,25 @@ def evaluate(datasets, bptt, eval_positions, metric_used, model, device='cpu'
         aggregated_metric, num = torch.tensor(0.0), 0
         ds_result = {}
 
-        for eval_position in (eval_positions if verbose else eval_positions):
-            eval_position_real = int(dataset_bptt * 0.5) if 2 * eval_position > dataset_bptt else eval_position
+        for eval_position in eval_positions:
+            # ensure eval_position_real not greater than dataset_bptt * 0.5
+            eval_position_real = min(int(dataset_bptt * 0.5), eval_position)
+            # make the total sequence length twice the eval_position_real
             eval_position_bptt = int(eval_position_real * 2.0)
 
-            r = evaluate_position(X, y, model=model
-                        , num_classes=len(torch.unique(y))
-                        , categorical_feats = categorical_feats
-                        , bptt = eval_position_bptt
-                        , ds_name=ds_name
-                        , eval_position = eval_position_real
-                        , metric_used = metric_used
-                                  , device=device
-                        ,**kwargs)
+            r = evaluate_position(
+                X,
+                y,
+                model=model,
+                num_classes=len(torch.unique(y)),
+                categorical_feats=categorical_feats,
+                bptt=eval_position_bptt,
+                ds_name=ds_name,
+                eval_position=eval_position_real,
+                metric_used=metric_used,
+                device=device,
+                *kwargs
+            )
 
             if r is None:
                 print('Execution failed', ds_name)
@@ -136,14 +158,14 @@ def evaluate(datasets, bptt, eval_positions, metric_used, model, device='cpu'
 
             # WARNING: This leaks information on the scaling of the labels
             if isinstance(model, nn.Module) and "BarDistribution" in str(type(model.criterion)):
-                ys = (ys - torch.min(ys, axis=0)[0]) / (torch.max(ys, axis=0)[0] - torch.min(ys, axis=0)[0])
-
-            # If we use the bar distribution and the metric_used is r2 -> convert buckets
-            #  metric used is prob -> keep
-            if isinstance(model, nn.Module) and "BarDistribution" in str(type(model.criterion)) and (
-                    metric_used == tabular_metrics.r2_metric or metric_used == tabular_metrics.root_mean_squared_error_metric):
-                ds_result[f'{ds_name}_bar_dist_at_{eval_position}'] = outputs
-                outputs = model.criterion.mean(outputs)
+                min_ys = torch.min(ys, axis=0)[0]
+                max_ys = torch.max(ys, axis=0)[0]
+                ys = (ys - min_ys) / (max_ys - min_ys)
+                # If we use the bar distribution and the metric_used is r2 -> convert buckets
+                #  metric used is prob -> keep
+                if metric_used in [tabular_metrics.r2_metric, tabular_metrics.root_mean_squared_error_metric]:
+                    ds_result[f'{ds_name}_bar_dist_at_{eval_position}'] = outputs
+                    outputs = model.criterion.mean(outputs)
 
             ys = ys.T
             ds_result[f'{ds_name}_best_configs_at_{eval_position}'] = best_configs
@@ -154,7 +176,7 @@ def evaluate(datasets, bptt, eval_positions, metric_used, model, device='cpu'
             new_metric = torch_nanmean(torch.stack([metric_used(ys[i], outputs[i]) for i in range(ys.shape[0])]))
 
             if not return_tensor:
-                make_scalar = lambda x: float(x.detach().cpu().numpy()) if (torch.is_tensor(x) and (len(x.shape) == 0)) else x
+                def make_scalar(x): return float(x.detach().cpu().numpy()) if (torch.is_tensor(x) and (len(x.shape) == 0)) else x
                 new_metric = make_scalar(new_metric)
                 ds_result = {k: make_scalar(ds_result[k]) for k in ds_result.keys()}
 
@@ -163,6 +185,7 @@ def evaluate(datasets, bptt, eval_positions, metric_used, model, device='cpu'
                 aggregated_metric, num = aggregated_metric + new_metric, num + 1
 
         overall_result.update(ds_result)
+
         if num > 0:
             aggregated_metric_datasets, num_datasets = (aggregated_metric_datasets + (aggregated_metric / num)), num_datasets + 1
 
@@ -184,7 +207,7 @@ def check_file_exists(path):
             return np.load(f, allow_pickle=True).tolist()
     return None
 
-def generate_valid_split(X, y, bptt, eval_position, is_classification, split_number=1):
+def generate_valid_split(X, y, bptt, eval_position, is_classification, seed):
     """Generates a deteministic train-(test/valid) split. Both splits must contain the same classes and all classes in
     the entire datasets. If no such split can be sampled in 7 passes, returns None.
 
@@ -195,17 +218,20 @@ def generate_valid_split(X, y, bptt, eval_position, is_classification, split_num
     :param split_number: The split id
     :return:
     """
-    done, seed = False, 13
+    done = False
 
-    torch.manual_seed(split_number)
-    perm = torch.randperm(X.shape[0]) if split_number > 1 else torch.arange(0, X.shape[0])
+    rng = np.random.RandomState(seed)
+
+    perm = torch.randperm(X.shape[0])  # if split_number > 1 else torch.arange(0, X.shape[0])
     X, y = X[perm], y[perm]
+    i = 0
     while not done:
-        if seed > 20:
-            return None, None # No split could be generated in 7 passes, return None
-        random.seed(seed)
-        i = random.randint(0, len(X) - bptt) if len(X) - bptt > 0 else 0
-        y_ = y[i:i + bptt]
+        if i >= N_PASSES:
+            return None, None # No split could be generated in N_PASSES passes, return None
+        # random.seed(seed)
+        start_index = rng.randint(0, len(X) - bptt)
+        start_index = start_index if len(X) - bptt > 0 else 0
+        y_ = y[start_index:start_index + bptt]
 
         if is_classification:
             # Checks if all classes from dataset are contained and classes in train and test are equal (contain same
@@ -218,16 +244,31 @@ def generate_valid_split(X, y, bptt, eval_position, is_classification, split_num
         else:
             done = True
 
-    eval_xs = torch.stack([X[i:i + bptt].clone()], 1)
-    eval_ys = torch.stack([y[i:i + bptt].clone()], 1)
+    eval_xs = torch.stack([X[start_index:start_index + bptt].clone()], 1)
+    eval_ys = torch.stack([y[start_index:start_index + bptt].clone()], 1)
 
     return eval_xs, eval_ys
 
 
-def evaluate_position(X, y, categorical_feats, model, bptt
-                      , eval_position, overwrite, save, base_path, path_interfix, method, ds_name, fetch_only=False
-                      , max_time=300, split_number=1, metric_used=None, device='cpu'
-                      , per_step_normalization=False, **kwargs):
+def evaluate_position(
+    X,
+    y,
+    categorical_feats,
+    model,
+    bptt,
+    eval_position,
+    overwrite,
+    save,
+    base_path,
+    path_interfix,
+    method,
+    ds_name,
+    fetch_only=False,
+    max_time=300,
+    split_id=1,
+    metric_used=None,
+    device='cpu',
+    per_step_normalization=False, **kwargs):
     """
     Evaluates a dataset with a 'bptt' number of training samples.
 
@@ -249,8 +290,12 @@ def evaluate_position(X, y, categorical_feats, model, bptt
     :return:
     """
 
+    seed = kwargs.get('seed', DEFAULT_SEED)
+
     if save:
-        path = os.path.join(base_path, f'results/tabular/{path_interfix}/results_{method}_{ds_name}_{eval_position}_{bptt}_{split_number}.npy')
+        path = os.path.join(
+            base_path,
+            f'results/tabular/{path_interfix}/results_{method}_{ds_name}_{eval_position}_{bptt}_{split_id}_{seed}.npy')
         #log_path =
 
     ## Load results if on disk
@@ -265,9 +310,9 @@ def evaluate_position(X, y, categorical_feats, model, bptt
             return None
 
     ## Generate data splits
-    eval_xs, eval_ys = generate_valid_split(X, y, bptt, eval_position
-                                            , is_classification=tabular_metrics.is_classification(metric_used)
-                                            , split_number=split_number)
+    eval_xs, eval_ys = generate_valid_split(X, y, bptt, eval_position,
+                                            is_classification=tabular_metrics.is_classification(metric_used),
+                                            split_id=split_id, seed=seed)
     if eval_xs is None:
         print(f"No dataset could be generated {ds_name} {bptt}")
         return None
@@ -282,17 +327,17 @@ def evaluate_position(X, y, categorical_feats, model, bptt
     start_time = time.time()
 
     if isinstance(model, nn.Module): # Two separate predict interfaces for transformer and baselines
-        outputs, best_configs = transformer_predict(model, eval_xs, eval_ys, eval_position, metric_used=metric_used
-                                                    , categorical_feats=categorical_feats
-                                                    , inference_mode=True
-                                                    , device=device
-                                                    , extend_features=True,
+        outputs, best_configs = transformer_predict(model, eval_xs, eval_ys, eval_position, metric_used=metric_used,
+                                                    categorical_feats=categorical_feats,
+                                                    inference_mode=True,
+                                                    device=device,
+                                                    extend_features=True,
                                                     **kwargs), None
     else:
-        _, outputs, best_configs = baseline_predict(model, eval_xs, eval_ys, categorical_feats
-                                                    , eval_pos=eval_position
-                                                    , device=device
-                                                    , max_time=max_time, metric_used=metric_used, **kwargs)
+        _, outputs, best_configs = baseline_predict(model, eval_xs, eval_ys, categorical_feats,
+                                                    eval_pos=eval_position,
+                                                    device=device,
+                                                    max_time=max_time, metric_used=metric_used, **kwargs)
     eval_ys = eval_ys[eval_position:]
     if outputs is None:
         print('Execution failed', ds_name)
