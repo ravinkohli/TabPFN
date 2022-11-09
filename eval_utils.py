@@ -390,7 +390,6 @@ def eval_method(
     append_metric: bool = True,
     fetch_only: bool = False,
     verbose: bool = False,
-    seed: int = DEFAULT_SEED,
     bptt: int = 2000,
     overwrite: bool = False,
 ):
@@ -427,7 +426,6 @@ def eval_method(
         split_id=split,
         verbose=verbose,
         max_time=max_time,
-        seed=seed
     )
 
 
@@ -446,13 +444,6 @@ def arguments() -> argparse.Namespace:
         type=float,
         default=[30],
         help="Times to evaluate (seconds)",
-    )
-    parser.add_argument(
-        "--seeds",
-        nargs="+",
-        type=int,
-        default=[DEFAULT_SEED],
-        help="Seeds to evaluate",
     )
     parser.add_argument(
         "--splits",
@@ -525,17 +516,15 @@ def arguments() -> argparse.Namespace:
 
 def do_evaluations(args: argparse.Namespace, datasets: list[Dataset]) -> Results:
     results = {}
-    for seed, method, metric, time, split in product(
-        args.seeds,
+    for method, metric, time, split in product(
         args.methods,
         args.optimization_metrics,
         args.times,
-        range(0, args.splits),
+        range(1, args.splits+1),
     ):
-        set_seed(seed=seed)
         metric_f = METRICS[metric]
         metric_name = tb.get_scoring_string(metric_f, usage="")
-        key = f"{method}_time_{time}{metric_name}_split_{split}_seed_{seed}"
+        key = f"{method}_time_{time}{metric_name}_split_{split}"
 
         results[key] = eval_method(
             datasets=datasets,
@@ -548,7 +537,6 @@ def do_evaluations(args: argparse.Namespace, datasets: list[Dataset]) -> Results
             max_time=time,
             metric_used=metric_f,
             split=split,
-            seed=seed,
             overwrite=args.overwrite,
         )
 
@@ -583,17 +571,17 @@ def do_evaluations(args: argparse.Namespace, datasets: list[Dataset]) -> Results
 def do_evaluations_slurm(args: argparse.Namespace, datasets, slurm: bool = False) -> Results:
     results = {}
     jobs = {}
-    for seed, method, metric, time, split in product(
-        args.seeds,
+    for method, metric, time, split in product(
         args.methods,
         args.optimization_metrics,
         args.times,
-        range(0, args.splits),
+        range(1, args.splits+1),
     ):
-        set_seed(seed=seed)
+        set_seed(seed=split)
+
         metric_f = METRICS[metric]
         metric_name = tb.get_scoring_string(metric_f, usage="")
-        key = f"{method}_time_{time}{metric_name}_split_{split}_seed_{seed}"
+        key = f"{method}_time_{time}{metric_name}_split_{split}"
 
         if not slurm:
             results[key] = eval_method(
@@ -607,7 +595,6 @@ def do_evaluations_slurm(args: argparse.Namespace, datasets, slurm: bool = False
             max_time=time,
             metric_used=metric_f,
             split=split,
-            seed=seed,
             overwrite=args.overwrite,
         )
         else:
@@ -633,7 +620,6 @@ def do_evaluations_slurm(args: argparse.Namespace, datasets, slurm: bool = False
             max_time=time,
             metric_used=metric_f,
             split=split,
-            seed=seed,
             overwrite=args.overwrite)
 
     return results, jobs

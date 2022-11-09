@@ -14,7 +14,6 @@ import numpy as np
 
 from torch import nn
 
-from tabpfn.constants import DEFAULT_SEED, N_PASSES
 from torch.utils.checkpoint import checkpoint
 from tabpfn.utils import normalize_data, torch_nanmean, to_ranking_low_mem, remove_outliers
 from tabpfn.scripts.tabular_baselines import get_scoring_string
@@ -207,32 +206,27 @@ def check_file_exists(path):
             return np.load(f, allow_pickle=True).tolist()
     return None
 
-def generate_valid_split(X, y, bptt, eval_position, is_classification, split_id=1, seed=DEFAULT_SEED):
+def generate_valid_split(X, y, bptt, eval_position, is_classification, split_id=1):
     """Generates a deteministic train-(test/valid) split. Both splits must contain the same classes and all classes in
     the entire datasets. If no such split can be sampled in 7 passes, returns None.
-
     :param X: torch tensor, feature values
     :param y: torch tensor, class values
     :param bptt: Number of samples in train + test
     :param eval_position: Number of samples in train, i.e. from which index values are in test
-    :param split_id: The split id
+    :param split_number: The split id
     :return:
     """
-    done = False
-    seed = 13
+    done, seed = False, 13
 
-    original_seed = seed
-    torch.manual_seed(seed)
+    torch.manual_seed(split_id)
     perm = torch.randperm(X.shape[0]) if split_id > 1 else torch.arange(0, X.shape[0])
     X, y = X[perm], y[perm]
-    # i = 0
     while not done:
-        if seed >= original_seed + N_PASSES:
-            return None, None # No split could be generated in N_PASSES passes, return None
-        np.random.seed(seed=seed)
-        # random_state = np.random.RandomState(seed)
-        start_index = np.random.randint(0, len(X) - bptt) if len(X) - bptt > 0 else 0
-        y_ = y[start_index:start_index + bptt]
+        if seed > 20:
+            return None, None # No split could be generated in 7 passes, return None
+        random.seed(seed)
+        i = random.randint(0, len(X) - bptt) if len(X) - bptt > 0 else 0
+        y_ = y[i:i + bptt]
 
         if is_classification:
             # Checks if all classes from dataset are contained and classes in train and test are equal (contain same
@@ -241,12 +235,12 @@ def generate_valid_split(X, y, bptt, eval_position, is_classification, split_id=
             done = done and torch.all(torch.unique(y_) == torch.unique(y))
             done = done and len(torch.unique(y_[:eval_position])) == len(torch.unique(y_[eval_position:]))
             done = done and torch.all(torch.unique(y_[:eval_position]) == torch.unique(y_[eval_position:]))
-            seed += 1
+            seed = seed + 1
         else:
             done = True
 
-    eval_xs = torch.stack([X[start_index:start_index + bptt].clone()], 1)
-    eval_ys = torch.stack([y[start_index:start_index + bptt].clone()], 1)
+    eval_xs = torch.stack([X[i:i + bptt].clone()], 1)
+    eval_ys = torch.stack([y[i:i + bptt].clone()], 1)
 
     return eval_xs, eval_ys
 
@@ -291,12 +285,10 @@ def evaluate_position(
     :return:
     """
 
-    seed = kwargs.get('seed', DEFAULT_SEED)
-
     if save:
         path = os.path.join(
             base_path,
-            f'results/tabular/{path_interfix}/results_{method}_{ds_name}_{eval_position}_{bptt}_{split_id}_{seed}.npy')
+            f'results/tabular/{path_interfix}/results_{method}_{ds_name}_{eval_position}_{bptt}_{split_id}.npy')
         #log_path =
 
     ## Load results if on disk
@@ -313,8 +305,7 @@ def evaluate_position(
     ## Generate data splits
     eval_xs, eval_ys = generate_valid_split(X, y, bptt, eval_position,
                                             is_classification=tabular_metrics.is_classification(metric_used),
-                                            split_id=split_id,
-                                            seed=seed)
+                                            split_id=split_id)
     if eval_xs is None:
         print(f"No dataset could be generated {ds_name} {bptt}")
         return None
@@ -334,11 +325,13 @@ def evaluate_position(
                                                     inference_mode=True,
                                                     device=device,
                                                     extend_features=True,
+                                                    seed=split_id,
                                                     **kwargs), None
     else:
         _, outputs, best_configs = baseline_predict(model, eval_xs, eval_ys, categorical_feats,
                                                     eval_pos=eval_position,
                                                     device=device,
+                                                    seed=split_id,
                                                     max_time=max_time, metric_used=metric_used, **kwargs)
     eval_ys = eval_ys[eval_position:]
     if outputs is None:
