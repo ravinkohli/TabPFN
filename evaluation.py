@@ -23,7 +23,7 @@ def post_process_chunks_result(args, result):
         sum_aggregate_metric = torch.tensor(0.0)
         for i, item in enumerate(result[key]):
             individual_result = item.result() if args.slurm else item
-            sum_aggregate_metric += item['sum_aggregate_metric']
+            sum_aggregate_metric += individual_result['sum_aggregate_metric']
             new_item = {**new_item, **individual_result}
         new_item.pop('sum_aggregate_metric', None)
         new_item['mean_metric'] = sum_aggregate_metric / ((i+1)*args.chunk_size)
