@@ -46,6 +46,7 @@ from sklearn.preprocessing import MinMaxScaler
 
 CV = 5
 MULTITHREAD = -1 # Number of threads baselines are able to use at most
+MAX_EVALS = 10_000
 param_grid, param_grid_hyperopt = {}, {}
 
 def get_scoring_direction(metric_used):
@@ -178,7 +179,7 @@ def eval_complete_f(x, y, test_x, test_y, key, clf_, metric_used, seed, max_time
           catch_eval_exceptions=True,
           verbose=True,
           # The seed is deterministic but varies for each dataset and each split of it
-          max_evals=1000)
+          max_evals=MAX_EVALS)
       best_score = np.min([t['result']['loss'] for t in trials.trials])
       if best_score < default:
         best = space_eval(param_grid_hyperopt[key], best)
