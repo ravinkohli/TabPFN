@@ -10,9 +10,26 @@ import pickle
 import os
 
 import time
+import torch
 
 from eval_utils import Dataset, Results, arguments, do_evaluations_slurm, DEFAULT_SEED, HERE, METHODS, METRICS, eval_method, set_seed
 from tabpfn.scripts.tabular_metrics import (calculate_score, time_metric)
+
+def post_process_chunks_result(args, result):
+    final_results = {}
+    for key in result:
+        final_results[key] = []
+        new_item = {}
+        sum_aggregate_metric = torch.tensor(0.0)
+        for i, item in enumerate(result[key]):
+            individual_result = item.result() if args.slurm else item
+            sum_aggregate_metric += item['sum_aggregate_metric']
+            new_item = {**new_item, **individual_result}
+        new_item.pop('sum_aggregate_metric', None)
+        new_item['mean_metric'] = sum_aggregate_metric / ((i+1)*args.chunk_size)
+        final_results[key] = new_item
+
+    return final_results
 
 if __name__ == "__main__":
     args = arguments()
@@ -40,7 +57,7 @@ if __name__ == "__main__":
 
     # print(args.result_path)
     if not args.load_predefined_results:
-        result, jobs = do_evaluations_slurm(args, all_datasets, slurm=True)
+        result = do_evaluations_slurm(args, all_datasets, slurm=args.slurm, chunk_size=args.chunk_size)
     else:
 
         def read(_path: Path) -> dict:
@@ -58,8 +75,8 @@ if __name__ == "__main__":
             recorded_metrics=args.recorded_metrics,
         )
 
-    for key in jobs:
-        result[key] = jobs[key].result()
+    # Post processing as the results are currently Dict[key, List[Dict]] make them Dict[key, Dict]
+    final_results = post_process_chunks_result(args, result)
 
     datasets_as_lists = [d.as_list() for d in all_datasets]
 
@@ -69,7 +86,7 @@ if __name__ == "__main__":
         calculate_score(
             metric=metric_f,
             name=metric,
-            global_results=result,
+            global_results=final_results,
             ds=datasets_as_lists,
             eval_positions=args.eval_positions,
         )
@@ -78,12 +95,12 @@ if __name__ == "__main__":
     calculate_score(
         metric=time_metric,
         name="time",
-        global_results=result,
+        global_results=final_results,
         ds=datasets_as_lists,
         eval_positions=args.eval_positions,
     )
     final_results = Results.from_dict(
-            result,
+            final_results,
             datasets=all_datasets,
             recorded_metrics=args.recorded_metrics + ["time"],
         )

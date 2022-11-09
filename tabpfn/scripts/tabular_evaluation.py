@@ -188,7 +188,7 @@ def evaluate(
         if num > 0:
             aggregated_metric_datasets, num_datasets = (aggregated_metric_datasets + (aggregated_metric / num)), num_datasets + 1
 
-    overall_result['mean_metric'] = aggregated_metric_datasets / num_datasets
+    overall_result['sum_aggregate_metric'] = aggregated_metric_datasets
 
     return overall_result
 

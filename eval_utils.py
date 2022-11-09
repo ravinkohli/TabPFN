@@ -15,6 +15,8 @@ import pandas as pd
 import random
 import torch
 
+from tqdm import tqdm
+
 import tabpfn.scripts.tabular_baselines as tb
 from tabpfn.datasets import load_openml_list, open_cc_dids, open_cc_valid_dids
 from tabpfn.scripts.tabular_baselines import clf_dict
@@ -181,7 +183,7 @@ class Results:
         datasets: list[Dataset],
         recorded_metrics: list[str],
         *,
-        dropna: bool = True
+        dropna: bool = True,
     ) -> Results:
         # TODO: we could extract dataset_names for the dict but it's not ordered well
         #   for that. Likewise for the recorded_metrics
@@ -193,7 +195,6 @@ class Results:
             r"_time_(?P<time>\d+(\.\d+)?)"
             r"(_)?(?P<metric>\w+)"
             r"_split_(?P<split>\d+)"
-            r"_seed_?(?P<seed>\d+)"
         )
 
         groups = []
@@ -206,12 +207,11 @@ class Results:
 
         matches = pd.DataFrame(groups)
 
-        # The unique methods, times, metrics, splits and seeds present
+        # The unique, methods, times, metrics and splits present
         methods = list(matches["method"].unique())
         times = list(matches["time"].astype(float).unique())
         metrics = list(matches["metric"].unique())
         splits = list(matches["split"].astype(int).unique())
-        seeds = list(matches["seed"].astype(int).unique())
 
         # Next we extract all the eval_positions
         _eval_positions = set()
@@ -246,8 +246,14 @@ class Results:
                 v[best_config_key] = np.nan
 
         index = pd.MultiIndex.from_product(
-            [methods, metrics, times, eval_positions, seeds, splits],
-            names=["method", "optimization_metric", "time", "eval_position", "seed", "split"],
+            [methods, metrics, times, eval_positions, splits],
+            names=[
+                "method",
+                "optimization_metric",
+                "optimization_time",
+                "eval_position",
+                "split",
+            ],
         )
 
         metrics = recorded_metrics + ["time", "inference_time", "fit_time"]
@@ -267,12 +273,11 @@ class Results:
             method = match.group("method")
             time = float(match.group("time"))
             opt_metric = match.group("metric")
-            seed = int(match.group("seed"))
             split = int(match.group("split"))
 
             for dataset, metric, pos in product(dataset_names, metrics, eval_positions):
-                row = (method, opt_metric, time, int(pos), seed, split)
-                col = (dataset, metric)
+                row = (method, opt_metric, time, int(pos), split)
+                col = (metric, dataset)
 
                 value = v.get(f"{dataset}_{metric}_at_{pos}", np.nan)
 
@@ -288,6 +293,7 @@ class Results:
         self,
         *,
         method: str | list[str] | None = None,
+        optimization_metric: str | list[str] | None = None,
         time: float | list[float] | None = None,
         split: int | list[int] | None = None,
         eval_position: int | list[int] | None = None,
@@ -296,7 +302,8 @@ class Results:
         df = self.df
         items = {
             "method": method,
-            "time": time,
+            "optimization_time": time,
+            "optimization_metric": optimization_metric,
             "split": split,
             "eval_position": eval_position,
         }
@@ -312,12 +319,13 @@ class Results:
 
         return Results(df)
 
-    def summary(self) -> pd.DataFrame:
-        per_dataset_mean_std = self.df.groupby(
-            ["method", "optimization_metric", "time", "eval_position"],
-            axis="index",
-        ).agg(["mean", "std"])
-        overal_mean_std = self.df.groupby()
+    # def summary(self) -> pd.DataFrame:
+    #     per_dataset_mean_std = df.groupby(
+    #         ["method", "optimization_metric", "optimization_time", "eval_position"],
+    #         axis="index",
+    #     ).agg(["mean", "std"])
+    #     overal_mean_std = df.groupby()
+
 
 
 
@@ -438,6 +446,7 @@ def arguments() -> argparse.Namespace:
         default=HERE,
     )
     parser.add_argument("--gpu", action="store_true", help="GPU's available?")
+    parser.add_argument("--slurm", action="store_true", help="Run on slurm?")
     parser.add_argument(
         "--times",
         nargs="+",
@@ -462,6 +471,12 @@ def arguments() -> argparse.Namespace:
         nargs="+",
         type=int,
         help="The test datasets",
+    )
+    parser.add_argument(
+        "--chunk_size",
+        type=int,
+        default=10,
+        help="Size of chunks to process the datasets",
     )
     parser.add_argument(
         "--optimization_metrics",
@@ -568,7 +583,14 @@ def do_evaluations(args: argparse.Namespace, datasets: list[Dataset]) -> Results
         recorded_metrics=args.recorded_metrics + ["time"],
     )
 
-def do_evaluations_slurm(args: argparse.Namespace, datasets, slurm: bool = False) -> Results:
+
+def chunks(lst, n):
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
+
+
+def do_evaluations_slurm(args: argparse.Namespace, datasets, slurm: bool = False, chunk_size: int = 10) -> Results:
     results = {}
     jobs = {}
     for method, metric, time, split in product(
@@ -577,49 +599,54 @@ def do_evaluations_slurm(args: argparse.Namespace, datasets, slurm: bool = False
         args.times,
         range(1, args.splits+1),
     ):
-        set_seed(seed=split)
 
         metric_f = METRICS[metric]
         metric_name = tb.get_scoring_string(metric_f, usage="")
         key = f"{method}_time_{time}{metric_name}_split_{split}"
+        log_folder = os.path.join(args.result_path, "log_test/")
+        for sub_datasets in tqdm(chunks(list(datasets), 10)):
 
-        if not slurm:
-            results[key] = eval_method(
-            datasets=datasets,
-            label=method,
-            result_path=args.result_path,
-            classifier_evaluator=METHODS[method],
-            eval_positions=args.eval_positions,  # It's a constant basically
-            fetch_only=args.fetch_only,
-            verbose=args.verbose,
-            max_time=time,
-            metric_used=metric_f,
-            split=split,
-            overwrite=args.overwrite,
-        )
-        else:
-            log_folder = os.path.join(args.result_path, "log_test/")
+            set_seed(seed=split)
 
-            slurm_executer = BoschSlurmExecutor(folder=log_folder)
-            slurm_executer.update_parameters(time=int(time),
-                                partition="bosch_cpu-cascadelake",
-                                mem_per_cpu=6000,
-                                nodes=1,
-                                cpus_per_task=1,
-                                ntasks_per_node=1,
-                                #  setup=['export MKL_THREADING_LAYER=GNU']
-                                ) 
-            jobs[key] = slurm_executer.submit(eval_method,
-            datasets=datasets,
-            label=method,
-            result_path=args.result_path,
-            classifier_evaluator=METHODS[method],
-            eval_positions=args.eval_positions,  # It's a constant basically
-            fetch_only=args.fetch_only,
-            verbose=args.verbose,
-            max_time=time,
-            metric_used=metric_f,
-            split=split,
-            overwrite=args.overwrite)
+            if slurm:
+                if key not in jobs:
+                    jobs[key] = []
+                slurm_executer = BoschSlurmExecutor(folder=log_folder)
+                slurm_executer.update_parameters(time=int(time),
+                                    partition="bosch_cpu-cascadelake",
+                                    mem_per_cpu=6000,
+                                    nodes=1,
+                                    cpus_per_task=1,
+                                    ntasks_per_node=1,
+                                    #  setup=['export MKL_THREADING_LAYER=GNU']
+                                    ) 
+                jobs[key].append(slurm_executer.submit(eval_method,
+                datasets=sub_datasets,
+                label=method,
+                result_path=args.result_path,
+                classifier_evaluator=METHODS[method],
+                eval_positions=args.eval_positions,  # It's a constant basically
+                fetch_only=args.fetch_only,
+                verbose=args.verbose,
+                max_time=time,
+                metric_used=metric_f,
+                split=split,
+                overwrite=args.overwrite)
+                )
+            else:
+                if key not in results:
+                    results[key] = []
+                results[key].append(eval_method(
+                datasets=sub_datasets,
+                label=method,
+                result_path=args.result_path,
+                classifier_evaluator=METHODS[method],
+                eval_positions=args.eval_positions,  # It's a constant basically
+                fetch_only=args.fetch_only,
+                verbose=args.verbose,
+                max_time=time,
+                metric_used=metric_f,
+                split=split,
+                overwrite=args.overwrite))
 
-    return results, jobs
+    return jobs if slurm else results
