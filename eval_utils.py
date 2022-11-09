@@ -635,8 +635,10 @@ def do_evaluations_slurm(args: argparse.Namespace, datasets, slurm: bool = False
                 if key not in jobs:
                     jobs[key] = []
 
+                # slurm expects time in minutes. 
+                total_job_time = (time/60 * args.chunk_size) * 1.5
                 slurm_executer = get_executer(args.partition)(folder=log_folder)
-                slurm_executer.update_parameters(**get_executer_params(time, args.partition, args.gpu)
+                slurm_executer.update_parameters(**get_executer_params(total_job_time, args.partition, args.gpu)
                                     #  setup=['export MKL_THREADING_LAYER=GNU']
                                     )
 
