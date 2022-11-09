@@ -25,7 +25,7 @@ from tabpfn.scripts.tabular_metrics import (accuracy_metric, auc_metric,
                                             brier_score_metric,
                                             calculate_score, cross_entropy,
                                             ece_metric, time_metric)
-from submitit import SlurmExecutor
+from submitit import SlurmExecutor, AutoExecuter
 
 DEFAULT_SEED = 42
 
@@ -51,11 +51,24 @@ PREDEFINED_DATASET_COLLECTIONS = {
     },
 }
 
-
 class BoschSlurmExecutor(SlurmExecutor):
     def _make_submission_command(self, submission_file_path):
         print(submission_file_path)
         return ["sbatch", str(submission_file_path), '--bosch']
+
+
+PARTITION_TO_EXECUTER = {
+    'bosch': BoschSlurmExecutor,
+    'other': AutoExecuter
+
+}
+
+def get_executer(partition: str) -> SlurmExecutor:
+    if 'bosch' in partition:
+        key = 'bosch'
+    else:
+        key = 'other'
+    return PARTITION_TO_EXECUTER[key]
 
 
 def set_seed(seed):
@@ -526,6 +539,9 @@ def arguments() -> argparse.Namespace:
     parser.add_argument(
         "--predefined_results_path", type=Path, default=PREDFINED_DATASET_PATHS
     )
+    parser.add_argument(
+        "--partition", type=str, default="bosch_cpu-cascadelake"
+    )
     return parser.parse_args()
 
 
@@ -611,15 +627,17 @@ def do_evaluations_slurm(args: argparse.Namespace, datasets, slurm: bool = False
             if slurm:
                 if key not in jobs:
                     jobs[key] = []
-                slurm_executer = BoschSlurmExecutor(folder=log_folder)
+
+                slurm_executer = get_executer(args.partition)(folder=log_folder)
                 slurm_executer.update_parameters(time=int(time),
-                                    partition="bosch_cpu-cascadelake",
+                                    partition=args.partition,
                                     mem_per_cpu=6000,
                                     nodes=1,
                                     cpus_per_task=1,
                                     ntasks_per_node=1,
                                     #  setup=['export MKL_THREADING_LAYER=GNU']
-                                    ) 
+                                    )
+
                 jobs[key].append(slurm_executer.submit(eval_method,
                 datasets=sub_datasets,
                 label=method,
