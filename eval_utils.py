@@ -71,6 +71,13 @@ def get_executer(partition: str) -> SlurmExecutor:
     return PARTITION_TO_EXECUTER[key]
 
 
+def get_executer_params(timeout: float, partition: str, gpu: bool = False):
+    if gpu:
+        return {'timeout_min': int(timeout), 'slurm_partition': partition}
+    else:
+        return {'time': int(timeout), 'partition': partition, 'mem_per_cpu': 6000, 'nodes': 1, 'cpus_per_task': 1, 'ntasks_per_node': 1}
+
+
 def set_seed(seed):
     # Setting up reproducibility
     torch.backends.cudnn.deterministic = True
@@ -620,7 +627,7 @@ def do_evaluations_slurm(args: argparse.Namespace, datasets, slurm: bool = False
         metric_name = tb.get_scoring_string(metric_f, usage="")
         key = f"{method}_time_{time}{metric_name}_split_{split}"
         log_folder = os.path.join(args.result_path, "log_test/")
-        for sub_datasets in tqdm(chunks(list(datasets), 10)):
+        for sub_datasets in tqdm(chunks(list(datasets), chunk_size)):
 
             set_seed(seed=split)
 
@@ -629,12 +636,7 @@ def do_evaluations_slurm(args: argparse.Namespace, datasets, slurm: bool = False
                     jobs[key] = []
 
                 slurm_executer = get_executer(args.partition)(folder=log_folder)
-                slurm_executer.update_parameters(time=int(time),
-                                    partition=args.partition,
-                                    mem_per_cpu=6000,
-                                    nodes=1,
-                                    cpus_per_task=1,
-                                    ntasks_per_node=1,
+                slurm_executer.update_parameters(**get_executer_params(time, args.partition, args.gpu)
                                     #  setup=['export MKL_THREADING_LAYER=GNU']
                                     )
 
