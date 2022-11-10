@@ -36,12 +36,12 @@ if __name__ == "__main__":
 
     if not args.validation_datasets:
         args.validation_datasets = "cc_valid"
-    elif args.validation_datasets < 0:
+    elif len(args.validation_datasets) == 1 and args.validation_datasets[-1] < 0:
         args.validation_datasets = None
 
     if not args.test_datasets:
         args.test_datasets = "cc_test"
-    elif args.test_datasets < 0:
+    elif len(args.test_datasets) == 1 and args.test_datasets[-1] < 0:
         args.test_datasets = None
 
     # We need to create some directories for this to work
