@@ -366,6 +366,11 @@ METHODS = {
     # lightgbm
     "lightgbm": clf_dict["lightgbm"],
     "lightgbm_default": partial(clf_dict["lightgbm"], no_tune={}),
+    # catboost
+    "catboost": clf_dict["catboost"],
+    "catboost_default": partial(clf_dict["catboost"], no_tune={}),
+    "catboost_gpu": partial(clf_dict["catboost"], gpu_id=0),
+    "catboost_default_gpu": partial(clf_dict["catboost"], no_tune={}, gpu_id=0),
     # xgb
     "xgb": clf_dict["xgb"],
     "xgb_default": partial(clf_dict["xgb"], no_tune={}),
@@ -388,6 +393,9 @@ METHODS = {
     "transformer_cpu_N_1": partial(
         clf_dict["transformer"], device="cpu", N_ensemble_configurations=1
     ),
+    "transformer_cpu_N_4": partial(
+        clf_dict["transformer"], device="cpu", N_ensemble_configurations=4
+    ),
     "transformer_cpu_N_8": partial(
         clf_dict["transformer"], device="cpu", N_ensemble_configurations=8
     ),
@@ -396,6 +404,9 @@ METHODS = {
     ),
     "transformer_gpu_N_1": partial(
         clf_dict["transformer"], device="cuda", N_ensemble_configurations=1
+    ),
+    "transformer_gpu_N_4": partial(
+        clf_dict["transformer"], device="cuda", N_ensemble_configurations=4
     ),
     "transformer_gpu_N_8": partial(
         clf_dict["transformer"], device="cuda", N_ensemble_configurations=8
