@@ -36,9 +36,13 @@ if __name__ == "__main__":
 
     if not args.validation_datasets:
         args.validation_datasets = "cc_valid"
+    elif args.validation_datasets < 0:
+        args.validation_datasets = None
 
     if not args.test_datasets:
         args.test_datasets = "cc_test"
+    elif args.test_datasets < 0:
+        args.test_datasets = None
 
     # We need to create some directories for this to work
     out_dir = os.path.join(args.result_path, "results", "tabular", "multiclass", f"{time.time()}")
@@ -48,8 +52,12 @@ if __name__ == "__main__":
     # We ignore the flags datasets
     filter_f = lambda d: d.name != "flags"  # noqa: ignore
 
-    valid_datasets = Dataset.fetch(args.validation_datasets, only=filter_f)
-    test_datasets = Dataset.fetch(args.test_datasets, only=filter_f)
+    valid_datasets = []
+    test_datasets = []
+    if args.validation_datasets is not None:
+        valid_datasets = Dataset.fetch(args.validation_datasets, only=filter_f)
+    if args.test_datasets is not None:
+        test_datasets = Dataset.fetch(args.test_datasets, only=filter_f)
 
     all_datasets = valid_datasets + test_datasets
     all_datasets = all_datasets
