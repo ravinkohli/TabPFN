@@ -3,19 +3,22 @@ from __future__ import annotations
 import argparse
 import pickle
 import re
+from tqdm import tqdm
+from collections import Counter
 from dataclasses import dataclass
 from functools import partial
-from itertools import product
+from itertools import chain, product
 from pathlib import Path
-from typing import Callable
-import os
+import random
+from typing import Any, Callable, Dict, Iterable, Sequence
 
+import matplotlib.pyplot as plt
+import matplotlib.transforms as mtransforms
 import numpy as np
 import pandas as pd
-import random
+import seaborn as sns
 import torch
-
-from tqdm import tqdm
+from matplotlib.lines import Line2D
 
 import tabpfn.scripts.tabular_baselines as tb
 from tabpfn.datasets import load_openml_list, open_cc_dids, open_cc_valid_dids
@@ -27,9 +30,8 @@ from tabpfn.scripts.tabular_metrics import (accuracy_metric, auc_metric,
                                             ece_metric, time_metric)
 from submitit import SlurmExecutor, AutoExecutor
 
-DEFAULT_SEED = 42
 
-HERE = Path(__file__).parent.resolve().absolute()
+HERE = Path(".").resolve().absolute()
 
 METRICS = {
     "roc": auc_metric,
@@ -39,7 +41,8 @@ METRICS = {
     "ece": ece_metric,
 }
 
-PREDFINED_DATASET_PATHS = HERE / "tabpfn" / "datasets"
+PREDEFINED_RESULTS_PATH = HERE / "TabPFNResults" / "all_results"
+PREDFINED_DATASET_PATHS = HERE / "tabpfn" / "datasets" # / "TabPFN" 
 PREDEFINED_DATASET_COLLECTIONS = {
     "cc_valid": {
         "ids": open_cc_valid_dids,
@@ -50,6 +53,50 @@ PREDEFINED_DATASET_COLLECTIONS = {
         "path": PREDFINED_DATASET_PATHS / "cc_test_datasets_multiclass.pickle",
     },
 }
+
+
+LABEL_NAMES = {
+    "transformer": "TabPFN",
+    "transformer_gpu_N_1": "TabPFN GPU (N_ens =  1)",
+    "transformer_gpu_N_8": "TabPFN GPU (N_ens =  8)",
+    "transformer_gpu_N_32": "TabPFN GPU (N_ens = 32)",
+    "transformer_cpu_N_1": "TabPFN CPU (N_ens =  1)",
+    "transformer_cpu_N_8": "TabPFN CPU (N_ens =  8)",
+    "transformer_cpu_N_32": "TabPFN CPU (N_ens = 32)",
+    "autogluon": "Autogluon",
+    "autosklearn2": "Autosklearn2",
+    "gp_default": "default GP (RBF)",
+    "gradient_boosting": "tuned Grad. Boost.",
+    "gradient_boosting_default": "default Grad. Boost.",
+    "lightgbm": "tuned LGBM",
+    "lightgbm_default": "default LGBM",
+    "gp": "tuned GP (RBF)",
+    "logistic": "tuned Log. Regr.",
+    "knn": "tuned KNN",
+    "catboost": "tuned Catboost",
+    "xgb": "tuned XGB",
+    "xgb_default": "default XGB",
+    "svm": "tuned SVM",
+    "svm_default": "default SVM",
+    "random_forest": "tuned Random Forest",
+    "rf_default_n_estimators_10": "Rand. Forest (N_est =  10)",
+    "rf_default_n_estimators_32": "Rand. Forest (N_est =  32)",
+    "rf_default": "Rand. Forest (N_est = 100)",
+}
+FAMILY_NAMES = {
+    "gp": "GP",
+    "gradient_boosting": "Grad. Boost",
+    "knn": "KNN",
+    "lightgbm": "LGBM",
+    "logistic": "Log. Regr.",
+    "rf": "RF",
+    "svm": "SVM",
+    "transformer_cpu": "TabPFN CPU",
+    "transformer_gpu": "TabPFN GPU",
+    "xgb": "XGB",
+    "catboost": "CatBoost",
+}
+
 
 class BoschSlurmExecutor(SlurmExecutor):
     def _make_submission_command(self, submission_file_path):
@@ -70,14 +117,14 @@ def get_executer(partition: str) -> SlurmExecutor:
     return PARTITION_TO_EXECUTER[key]
 
 
-def get_executer_params(timeout: float, partition: str, gpu: bool = False):
+def get_executer_params(timeout: float, partition: str, gpu: bool = False) -> Dict[str, Any]:
     if gpu:
         return {'timeout_min': int(timeout), 'slurm_partition': partition, 'slurm_tasks_per_node': 1, 'slurm_gres': "gpu:1"}
     else:
         return {'time': int(timeout), 'partition': partition, 'mem_per_cpu': 6000, 'nodes': 1, 'cpus_per_task': 1, 'ntasks_per_node': 1}
 
 
-def set_seed(seed):
+def set_seed(seed: int):
     # Setting up reproducibility
     torch.backends.cudnn.deterministic = True
     # torch.backends.cudnn.benchmark = False
@@ -98,6 +145,18 @@ class Dataset:
     info: dict
     # Only 'multiclass' is known?
     task_type: str
+
+    @property
+    def categorical(self) -> bool:
+        return len(self.categorical_columns) == len(self.attribute_names)
+
+    @property
+    def numerical(self) -> bool:
+        return len(self.categorical_columns) == 0
+
+    @property
+    def mixed(self) -> bool:
+        return not self.numerical and not self.categorical
 
     @classmethod
     def fetch(
@@ -313,15 +372,17 @@ class Results:
         *,
         method: str | list[str] | None = None,
         optimization_metric: str | list[str] | None = None,
-        time: float | list[float] | None = None,
+        optimization_time: float | list[float] | None = None,
         split: int | list[int] | None = None,
         eval_position: int | list[int] | None = None,
         dataset: str | list[str] | None = None,
+        metric: str | list[str] | None = None,
     ) -> Results:
+        """Use this for slicing in to the dataframe to get what you need"""
         df = self.df
         items = {
             "method": method,
-            "optimization_time": time,
+            "optimization_time": optimization_time,
             "optimization_metric": optimization_metric,
             "split": split,
             "eval_position": eval_position,
@@ -331,21 +392,278 @@ class Results:
                 continue
             idx: list = item if isinstance(item, list) else [item]
             df = df[df.index.get_level_values(name).isin(idx)]
+            if not isinstance(item, list):
+                df = df.droplevel(name, axis="index")
 
         if dataset:
-            dataset = dataset if isinstance(dataset, list) else [dataset]
-            df = df[dataset]
+            _dataset = dataset if isinstance(dataset, list) else [dataset]
+            df = df.T.loc[df.T.index.get_level_values("dataset").isin(_dataset)].T
+            if not isinstance(dataset, list):
+                df = df.droplevel("dataset", axis="columns")
+
+        if metric:
+            _metric = metric if isinstance(metric, list) else [metric]
+            df = df.T.loc[df.T.index.get_level_values("metric").isin(_metric)].T
+            if not isinstance(metric, list):
+                df = df.droplevel("metric", axis="columns")
 
         return Results(df)
 
-    # def summary(self) -> pd.DataFrame:
-    #     per_dataset_mean_std = df.groupby(
-    #         ["method", "optimization_metric", "optimization_time", "eval_position"],
-    #         axis="index",
-    #     ).agg(["mean", "std"])
-    #     overal_mean_std = df.groupby()
+    @property
+    def methods(self) -> list[str]:
+        return list(self.df.index.get_level_values("method").unique())
+
+    @property
+    def optimization_metrics(self) -> list[str]:
+        return list(self.df.index.get_level_values("optimization_metric").unique())
+
+    @property
+    def optimization_times(self) -> list[float]:
+        return list(self.df.index.get_level_values("optimization_time").unique())
+
+    @property
+    def eval_positions(self) -> list[int]:
+        return list(self.df.index.get_level_values("eval_position").unique())
+
+    @property
+    def datasets(self) -> list[str]:
+        return list(self.df.columns.get_level_values("dataset").unique())
+
+    @property
+    def metrics(self) -> list[str]:
+        return list(self.df.columns.get_level_values("metric").unique())
 
 
+@dataclass
+class Plotter:
+    result: Results
+
+    def overall_plot(
+        self,
+        *,
+        eval_position: int = 1_000,
+        optimization_time: float = 30.0,
+        optimization_metric: str = "roc_auc",
+        metric: str = "acc",
+        legend: str = "box",  # box, text
+        highlighted_families: Sequence[str] = FAMILY_NAMES.keys(),
+        # (
+        #    "transformer_cpu",
+        #    "transformer_gpu",
+        #    "xgb",
+        #    "rf",
+        # ),
+        ax: plt.Axes,
+    ) -> plt.Axes:
+        assert all(f in FAMILY_NAMES for f in highlighted_families)
+        quantile_pairs = [(0.05, 0.95), (0.25, 0.75)]
+        quantile_mark = [(0.05, 0.95), (0.25, 0.75)]
+        quantiles = sorted(set(chain.from_iterable(quantile_pairs)))
+
+        s_point = 50
+        s_median = 100
+        alpha_point = 0.1
+        alpha_family_join = 0.1
+        q_alpha = {0: 0.2, 0.05: 0.3, 0.25: 0.5}
+        q_linewidth = {0: 1, 0.05: 2, 0.25: 3}
+
+        r = self.result.at(
+            optimization_metric=optimization_metric,
+            optimization_time=optimization_time,
+            eval_position=eval_position,
+            metric=[metric, "time"],
+        )
+
+        # metric        acc       time
+        # method split
+        # gp     0      0.786164  39.354000
+        #        1      0.786164  38.317375
+        # ...           ...        ...
+        # xgb    19     0.794751   0.148113
+        #        20     0.794751   0.148113
+        df = r.df.groupby(["method", "split"]).mean().T.groupby("metric").mean().T
+
+        # For dataset cross dataset aggregation
+        # df = r.df.unstack(level="method").mean().unstack("metric").reset_index()
+
+        #          | time                               metric
+        # quantile | 0, 0.05, 0.25, 0.75, 0.95, 1, 0, 0.05, 0.25, 0.75, 0.95, 1
+        # ---------------------------------------------------------------------
+        # gp       |
+        # ...      |
+        # xgb      |
+        qs = df.groupby("method").quantile(quantiles).unstack()
+        qs.columns.names = [qs.columns.names[0], "quantiles"]
+
+        #        | acc time
+        # method |
+        # gp     |
+        # ...    |
+        # xgb    |
+        medians = df.groupby("method").agg({metric: "median", "time": "median"})
+
+        families = set(map(Plotter.family, r.methods))
+
+        palette = {
+            h: c for h, c in zip(families, sns.color_palette(n_colors=len(families)))
+        }
+
+        # Tiny feint blobs for all points
+        # methods = df.index.get_level_values("method")
+        # df["family"] = [self.family(m) for m in method_list]
+        # df["style"] = self.styles(method_list)
+        # sns.scatterplot(
+        # data=df,
+        # x="time",
+        # y=metric,
+        # hue=hue,
+        # style=style,
+        # alpha=alpha_point,
+        # ax=ax,
+        # legend=False,
+        # palette=palette,
+        # s=s_point,
+        # )
+
+        # Quantiles
+        # For each (method, quantile) we draw a H on both the time and metric axis
+        # time
+        times = qs["time"]
+        metric_values = qs[metric]
+        for method, (q_low, q_high) in product(qs.index, quantile_pairs):
+
+            x = medians.loc[method]["time"]
+            time_low = times[q_low].loc[method]
+            time_high = times[q_high].loc[method]
+
+            y = medians.loc[method][metric]
+            metric_low = metric_values[q_low].loc[method]
+            metric_high = metric_values[q_high].loc[method]
+
+            family = Plotter.family(method)
+
+            # Time
+            time_marker = "|" if (q_low, q_high) in quantile_mark else None
+            ax.plot(
+                [time_low, time_high],
+                [y, y],
+                c=palette[family],
+                alpha=q_alpha[q_low],
+                linewidth=q_linewidth[q_low],
+                marker=time_marker,
+            )
+
+            # Metric
+            metric_marker = "_" if (q_low, q_high) in quantile_mark else None
+            ax.plot(
+                [x, x],
+                [metric_low, metric_high],
+                c=palette[family],
+                alpha=q_alpha[q_low],
+                linewidth=q_linewidth[q_low],
+                marker=metric_marker,
+            )
+
+        # Big blob for medians
+        medians["family"] = [Plotter.family(i) for i in medians.index]
+        markers = self.markers(sorted(medians.index, key=lambda x: LABEL_NAMES[x]))
+
+        for key, group in medians.groupby("method"):
+            sns.scatterplot(
+                data=group,
+                x="time",
+                y=metric,
+                hue="family",
+                ax=ax,
+                palette=palette,
+                s=s_median,
+                marker=markers[key],
+            )
+
+        # https://matplotlib.org/stable/gallery/misc/transoffset.html#sphx-glr-gallery-misc-transoffset-py
+        text_offset = mtransforms.offset_copy(ax.transData, x=10, y=20, units="dots")
+        for family, group in medians.groupby("family"):
+            if family not in highlighted_families:
+                continue
+            # Sort by the time axis
+            xs, ys = zip(*sorted(zip(group["time"], group[metric])))
+            ax.plot(xs, ys, c=palette[family], linestyle="--", alpha=alpha_family_join)
+
+            l_xs = len(xs)
+            mid_x, mid_y = xs[l_xs // 2], ys[l_xs // 2]
+            ax.text(
+                mid_x,
+                mid_y,
+                FAMILY_NAMES[family],
+                transform=text_offset,
+                c=palette[family],
+                fontweight="bold",
+            )
+
+        ax.set_xscale("log")
+        ticks = {0.5: "0.5s", 1: "1s", 5: "5s", 15: "15s", 30: "30s", 60: "1min"}
+        ax.set_xticks(list(ticks.keys()))
+        ax.set_xticklabels(list(ticks.values()))
+
+        # We unfortunatly have to create a manual legend just due to seaborn not being
+        # very flexible in that respect
+        family_methods = sorted([(self.family(m), m) for m in set(medians.index)])
+
+        items = [
+            (
+                family,
+                LABEL_NAMES[method],
+                Line2D(
+                    [],
+                    [],
+                    color=palette[family],
+                    marker=markers[method],
+                    linestyle="",
+                ),
+            )
+            for family, method in family_methods
+        ]
+        # Sort just by family and label
+        _, labels, handles = zip(*sorted(items, key=lambda x: x[:2]))
+
+        # create a legend only using the items
+        ax.legend(
+            handles,
+            labels,
+            title="Method",
+            fontsize=10,
+        )
+
+        ax.set_xlabel("Time taken (s)")
+        ax.set_ylabel(metric)
+
+        return ax
+
+    @classmethod
+    def family(cls, method: str) -> str:
+        for f in FAMILY_NAMES:
+            if method.startswith(f):
+                return f
+
+        # Exceptions
+        if "random_forest" in method:
+            return "rf"
+
+        return method
+
+    @classmethod
+    def markers(cls, methods: Iterable[str]) -> dict[str, str]:
+        markers = ["o", "v", "s", "D", "8", "X", "*"]
+        styles: dict[str, str] = {}
+
+        counter: Counter[str] = Counter()
+        for method in methods:
+            family = cls.family(method)
+            idx = counter[family]
+            styles[method] = markers[idx]
+            counter[family] += 1
+
+        return styles
 
 
 # Predefined methods with `no_tune={}` inidicating they are not tuned
@@ -686,3 +1004,44 @@ def do_evaluations_slurm(args: argparse.Namespace, datasets, slurm: bool = False
                 overwrite=args.overwrite))
 
     return jobs if slurm else results
+
+
+# work/dlclarge1/rkohli-results_tabpfn_180/results/tabular/multiclass/results_svm_time_3600.0_roc_auc_*
+
+# def get_len_d_names(method):
+#     all_d_names = []
+#     for path in glob.glob(f"/work/dlclarge1/rkohli-results_tabpfn_180/results/tabular/multiclass/results_{method}_time_3600.0_roc_auc_*.npy"):
+#         d_name = path.split('.')[-2].split('_')[-4]
+#         all_d_names.append(d_name)
+#     return len(all_d_names)
+
+# svm 892
+# svm_default 895
+# gradient_boosting 0
+# gradient_boosting_default 895
+# gp 895
+# gp_default 895
+# lightgbm 895
+# lightgbm_default 895
+# catboost 0
+# catboost_default 895
+# catboost_gpu 0
+# catboost_default_gpu 0
+# xgb 895
+# xgb_default 895
+# xgb_default_gpu 895
+# xgb_gpu 895
+# random_forest 895
+# rf_default 895
+# rf_default_n_estimators_10 895
+# rf_default_n_estimators_32 895
+# knn 895
+# logistic 895
+# transformer_cpu_N_1 895
+# transformer_cpu_N_4 895
+# transformer_cpu_N_8 895
+# transformer_cpu_N_32 895
+# transformer_gpu_N_1 895
+# transformer_gpu_N_4 895
+# transformer_gpu_N_8 895
+# transformer_gpu_N_32 895

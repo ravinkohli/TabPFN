@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from argparse import Namespace
 from itertools import product
 from pathlib import Path
+from typing import Any, Dict
 
 import numpy as np
 
@@ -12,21 +14,38 @@ import os
 import time
 import torch
 
-from eval_utils import Dataset, Results, arguments, do_evaluations_slurm, DEFAULT_SEED, HERE, METHODS, METRICS, eval_method, set_seed
+from eval_utils import Dataset, Results, METRICS, arguments, do_evaluations_slurm
 from tabpfn.scripts.tabular_metrics import (calculate_score, time_metric)
 
-def post_process_chunks_result(args, result):
+
+
+def post_process_chunks_result(
+    chunk_size: int,
+    result: Dict[str, Any],
+    slurm: bool = False
+) -> Dict[str, Any]:
+    """
+    Merges chunked results. 
+
+    Args:
+        chunk_size (int): size of chunk, i.e, number of datasets in a chunk
+        result (Dict[str, Any]): chunked results
+        slurm (bool, optional): Whether results are to be fetched from slurm or not. Defaults to False.
+
+    Returns:
+        Dict[str, Any]: _description_
+    """
     final_results = {}
     for key in result:
         final_results[key] = []
         new_item = {}
         sum_aggregate_metric = torch.tensor(0.0)
         for i, item in enumerate(result[key]):
-            individual_result = item.result() if args.slurm else item
+            individual_result = item.result() if slurm else item
             sum_aggregate_metric += individual_result['sum_aggregate_metric']
             new_item = {**new_item, **individual_result}
         new_item.pop('sum_aggregate_metric', None)
-        new_item['mean_metric'] = sum_aggregate_metric / ((i+1)*args.chunk_size)
+        new_item['mean_metric'] = sum_aggregate_metric / ((i+1)*chunk_size)
         final_results[key] = new_item
 
     return final_results
