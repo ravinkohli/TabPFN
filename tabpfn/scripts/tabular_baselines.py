@@ -254,6 +254,32 @@ def transformer_metric(x, y, test_x, test_y, cat_features, metric_used, seed, ma
 
     return metric, pred, None
 
+
+def naiveatuoml_metric(x, y, test_x, test_y, cat_features, metric_used, seed, max_time=300):
+    from naiveautoml import NaiveAutoML
+
+    MAX_HPO_ITERATIONS = 10
+    multiclass = False
+    if is_classification(metric_used):
+        multiclass = len(np.unique(y)) > 2
+    
+
+    if classifier is None:
+      classifier = NaiveAutoML(
+        max_hpo_iterations=MAX_HPO_ITERATIONS,
+        scoring=get_scoring_string(metric_used, multiclass=multiclass, usage="sklearn_cv"),
+        timeout=max_time)
+
+    classifier.fit(x, y)
+    print('Train data shape', x.shape, ' Test data shape', test_x.shape)
+    predict_function = 'predict_proba' if is_classification(metric_used) else 'predict'
+    pred = getattr(classifier, predict_function)(test_x)
+
+    metric = metric_used(test_y, pred)
+
+    return metric, pred, None
+
+
 ## Auto Gluon
 # WARNING: Crashes for some predictors for regression
 def autogluon_metric(x, y, test_x, test_y, cat_features, metric_used, seed, max_time=300):
@@ -1460,4 +1486,5 @@ clf_dict = {'gp': gp_metric
            , 'autosklearn': autosklearn_metric
              , 'autosklearn2': autosklearn2_metric
             , 'autogluon': autogluon_metric,
-            'cocktail': well_tuned_simple_nets_metric}
+            'cocktail': well_tuned_simple_nets_metric,
+            "naiveautoml": naiveatuoml_metric}

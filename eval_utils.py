@@ -72,7 +72,7 @@ def get_executer(partition: str) -> SlurmExecutor:
 
 def get_executer_params(timeout: float, partition: str, gpu: bool = False):
     if gpu:
-        return {'timeout_min': int(timeout), 'slurm_partition': partition}
+        return {'timeout_min': int(timeout), 'slurm_partition': partition, 'slurm_tasks_per_node': 1, 'slurm_gres': "gpu:1"}
     else:
         return {'time': int(timeout), 'partition': partition, 'mem_per_cpu': 6000, 'nodes': 1, 'cpus_per_task': 1, 'ntasks_per_node': 1}
 
@@ -388,6 +388,8 @@ METHODS = {
     "knn": clf_dict["knn"],
     # logistic classification
     "logistic": clf_dict["logistic"],
+    # naiveautoml
+    "naiveautoml": clf_dict["naiveautoml"],
     # Transformers
     "transformer_cpu_N_1": partial(
         clf_dict["transformer"], device="cpu", N_ensemble_configurations=1

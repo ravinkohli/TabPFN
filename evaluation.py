@@ -34,6 +34,8 @@ def post_process_chunks_result(args, result):
 if __name__ == "__main__":
     args = arguments()
 
+    print(args)
+
     if not args.validation_datasets:
         args.validation_datasets = "cc_valid"
     elif len(args.validation_datasets) == 1 and args.validation_datasets[-1] < 0:
