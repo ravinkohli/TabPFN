@@ -47,7 +47,7 @@ if __name__ == "__main__":
         args.test_datasets = None
 
     # We need to create some directories for this to work
-    out_dir = os.path.join(args.result_path, "results", "tabular", "multiclass", f"{time.time()}")
+    out_dir = os.path.join(args.result_path, "results", "tabular", "multiclass") # , f"{time.time()}")
     os.makedirs(out_dir, exist_ok=True
     )
 

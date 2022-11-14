@@ -80,7 +80,7 @@ def get_executer_params(timeout: float, partition: str, gpu: bool = False):
 def set_seed(seed):
     # Setting up reproducibility
     torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+    # torch.backends.cudnn.benchmark = False
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
@@ -650,7 +650,7 @@ def do_evaluations_slurm(args: argparse.Namespace, datasets, slurm: bool = False
                     jobs[key] = []
 
                 # slurm expects time in minutes. 
-                total_job_time = (time/60 * args.chunk_size) * 1.5
+                total_job_time = max((time/60 * args.chunk_size) * 1.5, 15 * args.chunk_size)
                 slurm_executer = get_executer(args.partition)(folder=log_folder)
                 slurm_executer.update_parameters(**get_executer_params(total_job_time, args.partition, args.gpu)
                                     #  setup=['export MKL_THREADING_LAYER=GNU']
