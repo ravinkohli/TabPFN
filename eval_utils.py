@@ -353,6 +353,8 @@ METHODS = {
     # svm
     "svm": tb.svm_metric,
     "svm_default": partial(tb.svm_metric, no_tune={}),
+    # autogluon
+    "autogluon": tb.autogluon_metric,
     # gradient boosting
     "gradient_boosting": tb.gradient_boosting_metric,
     "gradient_boosting_default": partial(tb.gradient_boosting_metric, no_tune={}),
