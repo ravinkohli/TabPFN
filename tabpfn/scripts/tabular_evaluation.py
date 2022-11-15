@@ -146,7 +146,7 @@ def evaluate(
             )
 
             if r is None:
-                print('Execution failed', ds_name)
+                print(f"Execution failed: {kwargs.get('method', None), ds_name}")
                 continue
 
             _, outputs, ys, best_configs, time_used = r
@@ -335,7 +335,7 @@ def evaluate_position(
                                                     max_time=max_time, metric_used=metric_used, **kwargs)
     eval_ys = eval_ys[eval_position:]
     if outputs is None:
-        print('Execution failed', ds_name)
+        print(f"Execution failed: {method, ds_name}")
         return None
 
     if torch.is_tensor(outputs): # Transfers data to cpu for saving

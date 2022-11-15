@@ -851,7 +851,7 @@ def arguments() -> argparse.Namespace:
         nargs="+",
         type=str,
         help="The methods to evaluate",
-        default=["svm_default"],
+        default=list(METHODS.keys()),
     )
     parser.add_argument(
         "--fetch_only",
@@ -958,7 +958,6 @@ def do_evaluations_slurm(args: argparse.Namespace, datasets, slurm: bool = False
         metric_f = METRICS[metric]
         metric_name = tb.get_scoring_string(metric_f, usage="")
         key = f"{method}_time_{time}{metric_name}_split_{split}"
-        log_folder = os.path.join(args.result_path, "log_test/")
         for sub_datasets in tqdm(chunks(list(datasets), chunk_size)):
 
             set_seed(seed=split)
