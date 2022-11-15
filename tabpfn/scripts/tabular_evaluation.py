@@ -200,8 +200,8 @@ INTERNAL HELPER FUNCTIONS
 
 def check_file_exists(path):
     """Checks if a pickle file exists. Returns None if not, else returns the unpickled file."""
-    if (os.path.isfile(path)):
-        #print(f'loading results from {path}')
+    if os.path.isfile(path):
+        # print(f'loading results from {path}')
         with open(path, 'rb') as f:
             return np.load(f, allow_pickle=True).tolist()
     return None

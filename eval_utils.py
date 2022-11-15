@@ -10,7 +10,7 @@ from functools import partial
 from itertools import chain, product
 from pathlib import Path
 import random
-from typing import Any, Callable, Dict, Iterable, Sequence
+from typing import Any, Callable, Optional, Tuple, Dict, Iterable, Sequence
 
 import matplotlib.pyplot as plt
 import matplotlib.transforms as mtransforms
@@ -23,11 +23,13 @@ from matplotlib.lines import Line2D
 import tabpfn.scripts.tabular_baselines as tb
 from tabpfn.datasets import load_openml_list, open_cc_dids, open_cc_valid_dids
 from tabpfn.scripts.tabular_baselines import clf_dict
-from tabpfn.scripts.tabular_evaluation import evaluate
+from tabpfn.scripts.tabular_evaluation import check_file_exists, evaluate, get_scoring_string
 from tabpfn.scripts.tabular_metrics import (accuracy_metric, auc_metric,
                                             brier_score_metric,
                                             calculate_score, cross_entropy,
                                             ece_metric, time_metric)
+from tabpfn.utils import torch_nanmean
+                                        
 from submitit import SlurmExecutor, AutoExecutor
 
 
@@ -760,11 +762,7 @@ def eval_method(
     overwrite: bool = False,
 ):
     """Evaluate a given method."""
-    if max_time is not None:
-        label += f"_time_{max_time}"
-
-    if append_metric:
-        label += f"_{tb.get_scoring_string(metric_used, usage='')}"
+    label = update_label(label, max_time, metric_used, append_metric)
 
     if isinstance(classifier_evaluator, partial):
         device = classifier_evaluator.keywords.get("device", "cpu")
@@ -792,6 +790,221 @@ def eval_method(
         split_id=split,
         verbose=verbose,
         max_time=max_time,
+    )
+
+def update_label(label, max_time, metric_used, append_metric):
+    if max_time is not None:
+        label += f"_time_{max_time}"
+
+    if append_metric:
+        label += f"_{tb.get_scoring_string(metric_used, usage='')}"
+    return label
+
+
+def get_result_file_string(method, ds_name, eval_position, bptt, split_id, parents):
+    return os.path.join(*parents, f"results_{method}_{ds_name}_{eval_position}_{bptt}_{split_id}.npy")
+
+def read_method_results(
+    base_path,
+    path_interfix,
+    method,
+    split_id,
+    ds_name,
+    eval_position,
+    bptt):
+
+    path = get_result_file_string(
+        parents=(base_path, "results", "tabular", path_interfix),
+        method=method,
+        ds_name=ds_name,
+        eval_position=eval_position,
+        bptt=bptt,
+        split_id=split_id)
+    # print(f"Loading path: {path}")
+    ## Load results if on disk
+    return check_file_exists(path
+    )
+
+def evaluate_ensemble(
+    datasets,
+    bptt,
+    eval_positions,
+    metric_used,
+    baseline_method,
+    transformer_method,
+    base_path,
+    path_interfix,
+    split_id,
+    label,
+    return_tensor=False,
+    save=True,
+    overwrite=False
+):
+    """
+    Evaluates a list of datasets for a model function.
+
+    :param datasets: List of datasets
+    :param bptt: maximum sequence length
+    :param eval_positions: List of positions where to evaluate models
+    :param verbose: If True, is verbose.
+    :param metric_used: Which metric is optimized for.
+    :param return_tensor: Wheater to return results as a pytorch.tensor or numpy, this is only relevant for transformer.
+    :param kwargs:
+    :return:
+    """
+    overall_result = {
+        'metric_used': get_scoring_string(metric_used),
+        'bptt': bptt,
+        'eval_positions': eval_positions
+    }
+
+    aggregated_metric_datasets, num_datasets = torch.tensor(0.0), 0
+
+    print(f"Inside evaluate: {label}")
+    # For each dataset
+    for [ds_name, X, y, categorical_feats, _, _] in datasets:
+        dataset_bptt = min(len(X), bptt)
+        #if verbose and dataset_bptt < bptt:
+        #    print(f'Dataset too small for given bptt, reducing to {len(X)} ({bptt})')
+
+        aggregated_metric, num = torch.tensor(0.0), 0
+        ds_result = {}
+
+        for eval_position in eval_positions:
+            # ensure eval_position_real not greater than dataset_bptt * 0.5
+            eval_position_real = min(int(dataset_bptt * 0.5), eval_position)
+
+            # make the total sequence length twice the eval_position_real
+            eval_position_bptt = int(eval_position_real * 2.0)
+
+            results, error_string = get_ensemble_outputs(
+                bptt=eval_position_bptt,
+                baseline_method=baseline_method,
+                transformer_method=transformer_method,
+                base_path=base_path,
+                path_interfix=path_interfix,
+                ds_name=ds_name,
+                eval_position_real=eval_position_real,
+                split_id=split_id
+            )
+            if results is None:
+                print(error_string)
+                continue
+
+            ys, ensemble_outputs, ensemble_time_used = results
+            ys = ys.T
+
+            ds_result[f'{ds_name}_best_configs_at_{eval_position}'] = None
+            ds_result[f'{ds_name}_outputs_at_{eval_position}'] = ensemble_outputs
+            ds_result[f'{ds_name}_ys_at_{eval_position}'] = ys
+            ds_result[f'{ds_name}_time_at_{eval_position}'] = ensemble_time_used
+
+            new_metric = torch_nanmean(torch.stack([metric_used(ys[i], ensemble_outputs[i]) for i in range(ys.shape[0])]))
+
+            if not return_tensor:
+                def make_scalar(x): return float(x.detach().cpu().numpy()) if (torch.is_tensor(x) and (len(x.shape) == 0)) else x
+                new_metric = make_scalar(new_metric)
+                ds_result = {k: make_scalar(ds_result[k]) for k in ds_result.keys()}
+
+            ensemble_store_path = get_result_file_string(
+                    parents=(base_path, "results", "tabular", path_interfix),
+                    method=label,
+                    ds_name=ds_name,
+                    eval_position=eval_position,
+                    bptt=eval_position_bptt,
+                    split_id=split_id)
+
+            if save and not overwrite:
+                np.save(open(ensemble_store_path, 'wb'), tuple(ds_result.values()))
+                print(f'saved results to {ensemble_store_path}')
+
+            lib = torch if return_tensor else np
+            if not lib.isnan(new_metric).any():
+                aggregated_metric, num = aggregated_metric + new_metric, num + 1
+
+        overall_result.update(ds_result)
+
+        if num > 0:
+            aggregated_metric_datasets, num_datasets = (aggregated_metric_datasets + (aggregated_metric / num)), num_datasets + 1
+
+    overall_result['sum_aggregate_metric'] = aggregated_metric_datasets
+
+    return overall_result
+
+def get_ensemble_outputs(
+    bptt,
+    baseline_method,
+    transformer_method,
+    base_path,
+    path_interfix,
+    ds_name,
+    eval_position_real,
+    split_id
+    ) -> Tuple[Optional[Tuple], Optional[str]]:
+
+    results = {}
+    for method in (baseline_method, transformer_method):
+
+        result = read_method_results(
+                    base_path=base_path,
+                    path_interfix=path_interfix,
+                    method=method,
+                    ds_name=ds_name,
+                    eval_position=eval_position_real,
+                    bptt=bptt,
+                    split_id=split_id
+                )
+        if result is None:
+            return None, f"Execution failed for dataset: {ds_name} and method: {method}"
+        results[method] = result
+    
+    _, transformer_outputs, ys, _, transformer_time_used = results[transformer_method]
+    _, baseline_outputs, ys, _, baseline_time_used = results[baseline_method]
+
+    # Soft voting: take average of predicted probabilities
+    ensemble_outputs = (transformer_outputs + baseline_outputs) / 2
+    ensemble_time_used = transformer_time_used + baseline_time_used
+    return (ys,ensemble_outputs,ensemble_time_used), None
+
+
+def eval_method_ensemble(
+    datasets: list[Dataset],
+    label: str,
+    transformer_method: str,
+    baseline_method: str,
+    max_time: float | None,
+    metric_used: Callable,
+    split: int,
+    eval_positions: list[int],
+    result_path: Path,
+    append_metric: bool = True,
+    fetch_only: bool = False,
+    verbose: bool = False,
+    bptt: int = 2000,
+    overwrite: bool = False,
+):
+    """Evaluate a given method."""
+    label = update_label(label, max_time, metric_used, append_metric)
+    baseline_method = update_label(baseline_method, max_time, metric_used, append_metric)
+    transformer_method = update_label(transformer_method, max_time, metric_used, append_metric)
+
+    task_type = "multiclass"
+    if any(d.task_type != task_type for d in datasets):
+        raise RuntimeError("Not sure how to handle this yet")
+
+
+    return evaluate_ensemble(
+        datasets=[d.as_list() for d in datasets],
+        baseline_method=baseline_method,
+        transformer_method=transformer_method,
+        bptt=bptt,
+        base_path=result_path,
+        eval_positions=eval_positions,
+        metric_used=metric_used,
+        path_interfix=task_type,
+        split_id=split,
+        overwrite=overwrite,
+        label=label
     )
 
 
@@ -879,6 +1092,7 @@ def arguments() -> argparse.Namespace:
         help="Whether to overwrite results if they already exist",
     )
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--ensemble", action="store_true", help="Builds ensemble of TabPFN+b")
     parser.add_argument("--plots", type=Path, help="Where to output plots to")
     parser.add_argument("--load_predefined_results", action="store_true")
     parser.add_argument(
@@ -968,4 +1182,70 @@ def do_evaluations_parallel(args: argparse.Namespace, datasets, log_folder: str)
             overwrite=args.overwrite)
             )
 
-    return jobs
+    return jobs if slurm else results
+
+
+
+def do_evaluations_ensemble(args: argparse.Namespace, datasets: list[Dataset]) -> Results:
+    results = {}
+
+    # get transformer method
+    transformer_methods = [method for method in args.methods if "transformer" in method]
+    baseline_methods = [method for method in args.methods if "transformer" not in method]
+    assert len(transformer_methods) == 1, "Expected only 1 string for transformer"
+    transformer_method = transformer_methods.pop()
+
+    for baseline_method, metric, time, split in product(
+        baseline_methods,
+        args.optimization_metrics,
+        args.times,
+        range(1, args.splits+1),
+    ):
+        metric_f = METRICS[metric]
+        metric_name = tb.get_scoring_string(metric_f, usage="")
+
+        label = f"ensemble{transformer_method}{baseline_method}"
+
+        key = f"{label}_time_{time}{metric_name}_split_{split}"
+        results[key] = eval_method_ensemble(
+            datasets=datasets,
+            label=label,
+            result_path=args.result_path,
+            transformer_method=transformer_method,
+            baseline_method=baseline_method,
+            eval_positions=args.eval_positions,  # It's a constant basically
+            fetch_only=args.fetch_only,
+            verbose=args.verbose,
+            max_time=time,
+            metric_used=metric_f,
+            split=split,
+            overwrite=args.overwrite,
+        )
+
+    datasets_as_lists = [d.as_list() for d in datasets]
+
+    # This will update the results in place
+    for metric in args.recorded_metrics:
+        metric_f = METRICS[metric]
+        calculate_score(
+            metric=metric_f,
+            name=metric,
+            global_results=results,
+            ds=datasets_as_lists,
+            eval_positions=args.eval_positions,
+        )
+
+    # We also get the times
+    calculate_score(
+        metric=time_metric,
+        name="time",
+        global_results=results,
+        ds=datasets_as_lists,
+        eval_positions=args.eval_positions,
+    )
+    print(results.keys())
+    return Results.from_dict(
+        results,
+        datasets=datasets,
+        recorded_metrics=args.recorded_metrics + ["time"],
+    )
