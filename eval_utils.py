@@ -109,7 +109,7 @@ PARTITION_TO_EXECUTER = {
 
 }
 
-def get_executer(partition: str) -> SlurmExecutor:
+def get_executer_class(partition: str) -> SlurmExecutor:
     if 'bosch' in partition:
         key = 'bosch'
     else:
@@ -122,6 +122,12 @@ def get_executer_params(timeout: float, partition: str, gpu: bool = False) -> Di
         return {'timeout_min': int(timeout), 'slurm_partition': partition, 'slurm_tasks_per_node': 1, 'slurm_gres': "gpu:1"}
     else:
         return {'time': int(timeout), 'partition': partition, 'mem_per_cpu': 6000, 'nodes': 1, 'cpus_per_task': 1, 'ntasks_per_node': 1}
+
+
+def get_executer(partition: str, log_folder: str, gpu: bool=False, total_job_time_secs: float = 3600):
+    slurm_executer = get_executer_class(partition)(folder=log_folder)
+    slurm_executer.update_parameters(**get_executer_params(np.ceil(total_job_time_secs/60), partition, gpu))
+    return slurm_executer
 
 
 def set_seed(seed: int):
@@ -913,33 +919,7 @@ def do_evaluations(args: argparse.Namespace, datasets: list[Dataset]) -> Results
             overwrite=args.overwrite,
         )
 
-    datasets_as_lists = [d.as_list() for d in datasets]
-
-    # This will update the results in place
-    for metric in args.recorded_metrics:
-        metric_f = METRICS[metric]
-        calculate_score(
-            metric=metric_f,
-            name=metric,
-            global_results=results,
-            ds=datasets_as_lists,
-            eval_positions=args.eval_positions,
-        )
-
-    # We also get the times
-    calculate_score(
-        metric=time_metric,
-        name="time",
-        global_results=results,
-        ds=datasets_as_lists,
-        eval_positions=args.eval_positions,
-    )
-
-    return Results.from_dict(
-        results,
-        datasets=datasets,
-        recorded_metrics=args.recorded_metrics + ["time"],
-    )
+    return results
 
 
 def chunks(lst, n):
@@ -948,7 +928,7 @@ def chunks(lst, n):
         yield lst[i:i + n]
 
 
-def do_evaluations_parallel(args: argparse.Namespace, datasets, log_folder: str, chunk_size: int = 10) -> Results:
+def do_evaluations_parallel(args: argparse.Namespace, datasets, log_folder: str) -> Results:
     jobs = {}
     for method, metric, time, split in product(
         args.methods,
@@ -960,18 +940,20 @@ def do_evaluations_parallel(args: argparse.Namespace, datasets, log_folder: str,
         metric_f = METRICS[metric]
         metric_name = tb.get_scoring_string(metric_f, usage="")
         key = f"{method}_time_{time}{metric_name}_split_{split}"
-        for sub_datasets in tqdm(chunks(list(datasets), chunk_size)):
+        for sub_datasets in tqdm(chunks(list(datasets), args.chunk_size)):
             set_seed(seed=split)
 
             if key not in jobs:
                 jobs[key] = []
 
-            # slurm expects time in minutes. 
-            total_job_time = max((time/60 * args.chunk_size) * 1.5, 15 * args.chunk_size)
-            slurm_executer = get_executer(args.partition)(folder=log_folder)
-            slurm_executer.update_parameters(**get_executer_params(total_job_time, args.partition, args.gpu)
-                                )
-
+            # give atleast 1 min per split and 1.5 times the opt_time
+            total_job_time = max(time * 1.5, 60) * args.chunk_size
+            slurm_executer = get_executer(
+                partition=args.partition,
+                log_folder=log_folder,
+                total_job_time_secs=total_job_time,
+                gpu=args.gpu
+                )
             jobs[key].append(slurm_executer.submit(eval_method,
             datasets=sub_datasets,
             label=method,
