@@ -31,7 +31,7 @@ from tabpfn.scripts.tabular_metrics import (accuracy_metric, auc_metric,
 from submitit import SlurmExecutor, AutoExecutor
 
 
-HERE = Path(".").resolve().absolute()
+HERE = Path(__file__).parent.resolve().absolute()
 
 METRICS = {
     "roc": auc_metric,
@@ -1003,44 +1003,3 @@ def do_evaluations_slurm(args: argparse.Namespace, datasets, slurm: bool = False
                 overwrite=args.overwrite))
 
     return jobs if slurm else results
-
-
-# work/dlclarge1/rkohli-results_tabpfn_180/results/tabular/multiclass/results_svm_time_3600.0_roc_auc_*
-
-# def get_len_d_names(method):
-#     all_d_names = []
-#     for path in glob.glob(f"/work/dlclarge1/rkohli-results_tabpfn_180/results/tabular/multiclass/results_{method}_time_3600.0_roc_auc_*.npy"):
-#         d_name = path.split('.')[-2].split('_')[-4]
-#         all_d_names.append(d_name)
-#     return len(all_d_names)
-
-# svm 892
-# svm_default 895
-# gradient_boosting 0
-# gradient_boosting_default 895
-# gp 895
-# gp_default 895
-# lightgbm 895
-# lightgbm_default 895
-# catboost 0
-# catboost_default 895
-# catboost_gpu 0
-# catboost_default_gpu 0
-# xgb 895
-# xgb_default 895
-# xgb_default_gpu 895
-# xgb_gpu 895
-# random_forest 895
-# rf_default 895
-# rf_default_n_estimators_10 895
-# rf_default_n_estimators_32 895
-# knn 895
-# logistic 895
-# transformer_cpu_N_1 895
-# transformer_cpu_N_4 895
-# transformer_cpu_N_8 895
-# transformer_cpu_N_32 895
-# transformer_gpu_N_1 895
-# transformer_gpu_N_4 895
-# transformer_gpu_N_8 895
-# transformer_gpu_N_32 895
