@@ -318,7 +318,7 @@ class Results:
             fit_time_key = f"{dataset.name}_fit_time_at_{pos}"
 
             # If there is a best config
-            if "transformer_gpu" not in k and "autosklearn" not in k and any(v.get(old_best_configs_key, [])):
+            if "transformer" not in k and "autosklearn" not in k and any(v.get(old_best_configs_key, [])):
                 assert len(v[old_best_configs_key]) == 1
 
                 best_config = v[old_best_configs_key][0]
@@ -881,16 +881,38 @@ def evaluate_ensemble(
             # make the total sequence length twice the eval_position_real
             eval_position_bptt = int(eval_position_real * 2.0)
 
-            results, error_string = get_ensemble_outputs(
-                bptt=eval_position_bptt,
-                baseline_method=baseline_method,
-                transformer_method=transformer_method,
-                base_path=base_path,
-                path_interfix=path_interfix,
-                ds_name=ds_name,
-                eval_position_real=eval_position_real,
-                split_id=split_id
-            )
+
+            ensemble_store_path = get_result_file_string(
+                        parents=(base_path, "results", "tabular", path_interfix),
+                        method=label,
+                        ds_name=ds_name,
+                        eval_position=eval_position,
+                        bptt=eval_position_bptt,
+                        split_id=split_id)
+
+            if not overwrite:
+                results, error_string = get_ensemble_outputs(
+                    ensemble_store_path=ensemble_store_path,
+                    bptt=eval_position_bptt,
+                    baseline_method=baseline_method,
+                    transformer_method=transformer_method,
+                    base_path=base_path,
+                    path_interfix=path_interfix,
+                    ds_name=ds_name,
+                    eval_position_real=eval_position_real,
+                    split_id=split_id
+                )
+            else:
+                results, error_string = load_combine_individual_estimator_pred(
+                                            bptt=eval_position_bptt,
+                                            baseline_method=baseline_method,
+                                            transformer_method=transformer_method,
+                                            base_path=base_path,
+                                            path_interfix=path_interfix,
+                                            ds_name=ds_name,
+                                            eval_position_real=eval_position_real,
+                                            split_id=split_id,
+                                        )
             if results is None:
                 print(error_string)
                 continue
@@ -910,15 +932,7 @@ def evaluate_ensemble(
                 new_metric = make_scalar(new_metric)
                 ds_result = {k: make_scalar(ds_result[k]) for k in ds_result.keys()}
 
-            ensemble_store_path = get_result_file_string(
-                    parents=(base_path, "results", "tabular", path_interfix),
-                    method=label,
-                    ds_name=ds_name,
-                    eval_position=eval_position,
-                    bptt=eval_position_bptt,
-                    split_id=split_id)
-
-            if save and not overwrite:
+            if save:
                 np.save(open(ensemble_store_path, 'wb'), tuple(ds_result.values()))
                 print(f'saved results to {ensemble_store_path}')
 
@@ -935,7 +949,8 @@ def evaluate_ensemble(
 
     return overall_result
 
-def get_ensemble_outputs(
+
+def load_combine_individual_estimator_pred(
     bptt,
     baseline_method,
     transformer_method,
@@ -944,8 +959,7 @@ def get_ensemble_outputs(
     ds_name,
     eval_position_real,
     split_id
-    ) -> Tuple[Optional[Tuple], Optional[str]]:
-
+):
     results = {}
     for method in (baseline_method, transformer_method):
 
@@ -958,6 +972,7 @@ def get_ensemble_outputs(
                     bptt=bptt,
                     split_id=split_id
                 )
+
         if result is None:
             return None, f"Execution failed for dataset: {ds_name} and method: {method}"
         results[method] = result
@@ -968,6 +983,38 @@ def get_ensemble_outputs(
     # Soft voting: take average of predicted probabilities
     ensemble_outputs = (transformer_outputs + baseline_outputs) / 2
     ensemble_time_used = transformer_time_used + baseline_time_used
+    return (ys,ensemble_outputs,ensemble_time_used), None
+
+
+def get_ensemble_outputs(
+    ensemble_store_path,
+    bptt,
+    baseline_method,
+    transformer_method,
+    base_path,
+    path_interfix,
+    ds_name,
+    eval_position_real,
+    split_id
+    ) -> Tuple[Optional[Tuple], Optional[str]]:
+
+    result = check_file_exists(ensemble_store_path)
+    if result is None:
+        # load individual files
+        result, error_string = load_combine_individual_estimator_pred(
+            bptt=bptt,
+            baseline_method=baseline_method,
+            transformer_method=transformer_method,
+            base_path=base_path,
+            path_interfix=path_interfix,
+            ds_name=ds_name,
+            eval_position_real=eval_position_real,
+            split_id=split_id,
+        )
+        if result is None:
+            return (ys,ensemble_outputs,ensemble_time_used), error_string
+    else:
+        _, ys,ensemble_outputs,ensemble_time_used = result
     return (ys,ensemble_outputs,ensemble_time_used), None
 
 
@@ -1011,7 +1058,6 @@ def eval_method_ensemble(
         label=label
     )
 
-
 def arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -1028,6 +1074,12 @@ def arguments() -> argparse.Namespace:
         type=float,
         default=[30],
         help="Times to evaluate (seconds)",
+    )
+    parser.add_argument(
+        "--slurm_job_time",
+        type=float,
+        default=3600,
+        help="Time to allot for slurm jobs. Not used for parallel execution",
     )
     parser.add_argument(
         "--splits",

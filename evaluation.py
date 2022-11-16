@@ -100,30 +100,49 @@ if __name__ == "__main__":
     if args.ensemble:
         # assumes that args.methods passed provides baseline methods to combine with 1 tabpfn classifier
         # can be done locally.
-        result = do_evaluations_ensemble(args, all_datasets)
-    elif args.slurm:
-        if args.parallel:
-            # runs each split, method on "args.chunk_size" datasets as paralle jobs. 
-            result = do_evaluations_parallel(args, all_datasets, log_folder=log_folder)
-            result = post_process_chunks_result(args.chunk_size, result=result)
-        else:
-            # submits only 1 job with all methods and datasets and splits
-            # should only be used for small experiments or collecting results. 
-            # Max time hardcoded to 1 hr.
-            assert not args.overwrite, f"Passed 'overwrite' flag. For running method on new splits please use parallel execution"
-            if not args.fetch_only:
-                warnings.warn(f"Not passed 'fetch_only' flag. For running method on new splits please use parallel execution")
+        if args.slurm:
+            print("Running ensemble on slurm")
             slurm_executer = get_executer(
                 partition=args.partition,
                 log_folder=log_folder,
-                total_job_time_secs=3600,  # 1 hr to collect the results
+                total_job_time_secs=args.slurm_job_time,
                 gpu=args.gpu
                 )
-            job = slurm_executer.submit(do_evaluations, args, all_datasets)
+            job = slurm_executer.submit(do_evaluations_ensemble, args, all_datasets)
+            print(f"Started job with job_id: {job.job_id}")
             result = job.result()
+        else:
+            result = do_evaluations_ensemble(args, all_datasets)
+
     else:
-        # running locally
-        result = do_evaluations(args, all_datasets)
+        if args.slurm:
+            if args.parallel:
+                # runs each split, method on "args.chunk_size" datasets as paralle jobs. 
+                jobs = do_evaluations_parallel(args, all_datasets, log_folder=log_folder)
+                for experiment_key, chunked_job in jobs.items():
+                    for i, single_job in enumerate(chunked_job):
+                        print(f"Running chunk: {i} for {experiment_key} with job_id: {single_job.job_id}")
+                result = post_process_chunks_result(args.chunk_size, result=jobs)
+            else:
+                # submits only 1 job with all methods and datasets and splits
+                # should only be used for small experiments or collecting results. 
+                # Max time hardcoded to 1 hr.
+                assert not args.overwrite, f"Passed 'overwrite' flag. For running method on new splits please use parallel execution"
+                if not args.fetch_only:
+                    warnings.warn(f"Not passed 'fetch_only' flag. For running method on new splits please use parallel execution")
+                slurm_executer = get_executer(
+                    partition=args.partition,
+                    log_folder=log_folder,
+                    total_job_time_secs=args.slurm_job_time,  # 1 hr to collect the results
+                    gpu=args.gpu
+                    )
+                job = slurm_executer.submit(do_evaluations, args, all_datasets)
+                print(f"Started job with job_id: {job.job_id}")
+                result = job.result()
+
+        else:
+            # running locally
+            result = do_evaluations(args, all_datasets)
 
     # Calculate metrics for results
     result = calculate_metrics(
