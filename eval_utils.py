@@ -1036,16 +1036,10 @@ def arguments() -> argparse.Namespace:
         help="The splits to evaluate",
     )
     parser.add_argument(
-        "--validation_datasets",
+        "--datasets",
         nargs="+",
         type=int,
-        help="The validation datasets",
-    )
-    parser.add_argument(
-        "--test_datasets",
-        nargs="+",
-        type=int,
-        help="The test datasets",
+        help="List of test datasets",
     )
     parser.add_argument(
         "--chunk_size",

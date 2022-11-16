@@ -1,14 +1,7 @@
 from __future__ import annotations
 
-from argparse import Namespace
-from itertools import product
-from pathlib import Path
 from typing import Any, Dict, List
 import warnings 
-
-import numpy as np
-
-import pickle
 
 import os
 
@@ -88,33 +81,20 @@ if __name__ == "__main__":
 
     print(args)
 
-    if not args.validation_datasets:
-        args.validation_datasets = "cc_valid"
-    elif len(args.validation_datasets) == 1 and args.validation_datasets[-1] < 0:
-        args.validation_datasets = None
-
-    if not args.test_datasets:
-        args.test_datasets = "cc_test"
-    elif len(args.test_datasets) == 1 and args.test_datasets[-1] < 0:
-        args.test_datasets = None
-
     # We need to create some directories for this to work
     out_dir = os.path.join(args.result_path, "results", "tabular", "multiclass") # , f"{time.time()}")
-    os.makedirs(out_dir, exist_ok=True
-    )
+    os.makedirs(out_dir, exist_ok=True)
 
     # We ignore the flags datasets
     filter_f = lambda d: d.name != "flags"  # noqa: ignore
 
-    valid_datasets = []
-    test_datasets = []
-    if args.validation_datasets is not None:
-        valid_datasets = Dataset.fetch(args.validation_datasets, only=filter_f)
-    if args.test_datasets is not None:
-        test_datasets = Dataset.fetch(args.test_datasets, only=filter_f)
+    if args.datasets is None:
+        valid_datasets = Dataset.fetch("cc_valid", only=filter_f)
+        test_datasets = Dataset.fetch("cc_test", only=filter_f)
+        all_datasets = valid_datasets + test_datasets
+    else:
+        all_datasets = Dataset.fetch(args.datasets, only=filter_f)
 
-    all_datasets = valid_datasets + test_datasets
-    all_datasets = all_datasets
     log_folder = os.path.join(args.result_path, "log_test/")
     
     if not args.load_predefined_results:
