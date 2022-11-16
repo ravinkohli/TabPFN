@@ -97,33 +97,39 @@ if __name__ == "__main__":
 
     log_folder = os.path.join(args.result_path, "log_test/")
     
-    if not args.load_predefined_results:
-        if args.ensemble:
-            result = do_evaluations_ensemble(args, all_datasets)
-        elif args.slurm:
-            if args.parallel:
-                result = do_evaluations_parallel(args, all_datasets, log_folder=log_folder)
-                result = post_process_chunks_result(args.chunk_size, result=result)
-            else:
-                assert not args.overwrite, f"Passed 'overwrite' flag. For running method on new splits please use parallel execution"
-                if not args.fetch_only:
-                    warnings.warn(f"Not passed 'fetch_only' flag. For running method on new splits please use parallel execution")
-                slurm_executer = get_executer(
-                    partition=args.partition,
-                    log_folder=log_folder,
-                    total_job_time_secs=3600,  # 1 hr to collect the results
-                    gpu=args.gpu
-                    )
-                job = slurm_executer.submit(do_evaluations, args, all_datasets)
-                result = job.result()
+    if args.ensemble:
+        # assumes that args.methods passed provides baseline methods to combine with 1 tabpfn classifier
+        # can be done locally.
+        result = do_evaluations_ensemble(args, all_datasets)
+    elif args.slurm:
+        if args.parallel:
+            # runs each split, method on "args.chunk_size" datasets as paralle jobs. 
+            result = do_evaluations_parallel(args, all_datasets, log_folder=log_folder)
+            result = post_process_chunks_result(args.chunk_size, result=result)
         else:
-            result = do_evaluations(args, all_datasets)
+            # submits only 1 job with all methods and datasets and splits
+            # should only be used for small experiments or collecting results. 
+            # Max time hardcoded to 1 hr.
+            assert not args.overwrite, f"Passed 'overwrite' flag. For running method on new splits please use parallel execution"
+            if not args.fetch_only:
+                warnings.warn(f"Not passed 'fetch_only' flag. For running method on new splits please use parallel execution")
+            slurm_executer = get_executer(
+                partition=args.partition,
+                log_folder=log_folder,
+                total_job_time_secs=3600,  # 1 hr to collect the results
+                gpu=args.gpu
+                )
+            job = slurm_executer.submit(do_evaluations, args, all_datasets)
+            result = job.result()
+    else:
+        # running locally
+        result = do_evaluations(args, all_datasets)
 
-        # Calculate metrics for results
-        result = calculate_metrics(
-            datasets=all_datasets,
-            recorded_metrics=args.recorded_metrics,
-            eval_positions=args.eval_positions,
-            results=result)
+    # Calculate metrics for results
+    result = calculate_metrics(
+        datasets=all_datasets,
+        recorded_metrics=args.recorded_metrics,
+        eval_positions=args.eval_positions,
+        results=result)
 
     result.df.to_csv(os.path.join(args.result_path, "results.csv"), index=True)
