@@ -851,7 +851,7 @@ def arguments() -> argparse.Namespace:
         nargs="+",
         type=str,
         help="The methods to evaluate",
-        default=list(METHODS.keys()),
+        default=["svm_default"],
     )
     parser.add_argument(
         "--fetch_only",
@@ -880,6 +880,9 @@ def arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "--partition", type=str, default="bosch_cpu-cascadelake"
+    )
+    parser.add_argument("--parallel", action="store_true",
+                        help="Paralleise execution of each split"
     )
     return parser.parse_args()
 
@@ -945,8 +948,7 @@ def chunks(lst, n):
         yield lst[i:i + n]
 
 
-def do_evaluations_slurm(args: argparse.Namespace, datasets, slurm: bool = False, chunk_size: int = 10) -> Results:
-    results = {}
+def do_evaluations_parallel(args: argparse.Namespace, datasets, log_folder: str, chunk_size: int = 10) -> Results:
     jobs = {}
     for method, metric, time, split in product(
         args.methods,
@@ -959,47 +961,29 @@ def do_evaluations_slurm(args: argparse.Namespace, datasets, slurm: bool = False
         metric_name = tb.get_scoring_string(metric_f, usage="")
         key = f"{method}_time_{time}{metric_name}_split_{split}"
         for sub_datasets in tqdm(chunks(list(datasets), chunk_size)):
-
             set_seed(seed=split)
 
-            if slurm:
-                if key not in jobs:
-                    jobs[key] = []
+            if key not in jobs:
+                jobs[key] = []
 
-                # slurm expects time in minutes. 
-                total_job_time = max((time/60 * args.chunk_size) * 1.5, 15 * args.chunk_size)
-                slurm_executer = get_executer(args.partition)(folder=log_folder)
-                slurm_executer.update_parameters(**get_executer_params(total_job_time, args.partition, args.gpu)
-                                    #  setup=['export MKL_THREADING_LAYER=GNU']
-                                    )
+            # slurm expects time in minutes. 
+            total_job_time = max((time/60 * args.chunk_size) * 1.5, 15 * args.chunk_size)
+            slurm_executer = get_executer(args.partition)(folder=log_folder)
+            slurm_executer.update_parameters(**get_executer_params(total_job_time, args.partition, args.gpu)
+                                )
 
-                jobs[key].append(slurm_executer.submit(eval_method,
-                datasets=sub_datasets,
-                label=method,
-                result_path=args.result_path,
-                classifier_evaluator=METHODS[method],
-                eval_positions=args.eval_positions,  # It's a constant basically
-                fetch_only=args.fetch_only,
-                verbose=args.verbose,
-                max_time=time,
-                metric_used=metric_f,
-                split=split,
-                overwrite=args.overwrite)
-                )
-            else:
-                if key not in results:
-                    results[key] = []
-                results[key].append(eval_method(
-                datasets=sub_datasets,
-                label=method,
-                result_path=args.result_path,
-                classifier_evaluator=METHODS[method],
-                eval_positions=args.eval_positions,  # It's a constant basically
-                fetch_only=args.fetch_only,
-                verbose=args.verbose,
-                max_time=time,
-                metric_used=metric_f,
-                split=split,
-                overwrite=args.overwrite))
+            jobs[key].append(slurm_executer.submit(eval_method,
+            datasets=sub_datasets,
+            label=method,
+            result_path=args.result_path,
+            classifier_evaluator=METHODS[method],
+            eval_positions=args.eval_positions,  # It's a constant basically
+            fetch_only=args.fetch_only,
+            verbose=args.verbose,
+            max_time=time,
+            metric_used=metric_f,
+            split=split,
+            overwrite=args.overwrite)
+            )
 
-    return jobs if slurm else results
+    return jobs

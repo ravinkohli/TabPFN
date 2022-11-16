@@ -14,7 +14,7 @@ import os
 import time
 import torch
 
-from eval_utils import Dataset, Results, METRICS, arguments, do_evaluations_slurm, get_executer, get_executer_params, do_evaluations
+from eval_utils import Dataset, Results, METRICS, arguments, do_evaluations_parallel, get_executer, get_executer_params, do_evaluations
 from tabpfn.scripts.tabular_metrics import (calculate_score, time_metric)
 
 
@@ -82,23 +82,23 @@ if __name__ == "__main__":
 
     all_datasets = valid_datasets + test_datasets
     all_datasets = all_datasets
-    # base_path = os.path.join('/work/dlclarge1/rkohli-results_tabpfn_180/results_1667931216')
-
-    # print(args.result_path)
+    log_folder = os.path.join(args.result_path, "log_test/")
+    
     if not args.load_predefined_results:
-        
         if args.slurm:
-            log_folder = os.path.join(args.result_path, "log_test/")
-            # slurm expects time in minutes. 
-            total_job_time = 60
-            slurm_executer = get_executer(args.partition)(folder=log_folder)
-            slurm_executer.update_parameters(**get_executer_params(total_job_time, args.partition, args.gpu)
-                                #  setup=['export MKL_THREADING_LAYER=GNU']
-                                )
-            job = slurm_executer.submit(do_evaluations, args, all_datasets)
-            result = job.result()
+            if args.parallel:
+                result = do_evaluations_parallel(args, all_datasets, log_folder=log_folder, chunk_size=args.chunk_size)
+            else:
+                # slurm expects time in minutes. 
+                total_job_time = 60
+                slurm_executer = get_executer(args.partition)(folder=log_folder)
+                slurm_executer.update_parameters(**get_executer_params(total_job_time, args.partition, args.gpu)
+                                    )
+                job = slurm_executer.submit(do_evaluations, args, all_datasets)
+                result = job.result()
         else:
-            result = do_evaluations_slurm(args, all_datasets, slurm=args.slurm, chunk_size=args.chunk_size)
+            result = do_evaluations(args, all_datasets)
+
     else:
 
         def read(_path: Path) -> dict:
@@ -116,34 +116,4 @@ if __name__ == "__main__":
             recorded_metrics=args.recorded_metrics,
         )
 
-    # # Post processing as the results are currently Dict[key, List[Dict]] make them Dict[key, Dict]
-    # final_results = post_process_chunks_result(args, result)
-
-    # datasets_as_lists = [d.as_list() for d in all_datasets]
-
-    # # This will update the results in place
-    # for metric in args.recorded_metrics:
-    #     metric_f = METRICS[metric]
-    #     calculate_score(
-    #         metric=metric_f,
-    #         name=metric,
-    #         global_results=final_results,
-    #         ds=datasets_as_lists,
-    #         eval_positions=args.eval_positions,
-    #     )
-
-    # # We also get the times
-    # calculate_score(
-    #     metric=time_metric,
-    #     name="time",
-    #     global_results=final_results,
-    #     ds=datasets_as_lists,
-    #     eval_positions=args.eval_positions,
-    # )
-    # final_results = Results.from_dict(
-    #         final_results,
-    #         datasets=all_datasets,
-    #         recorded_metrics=args.recorded_metrics + ["time"],
-    #     )
-    # final_results.df.to_csv(os.path.join(out_dir, "results.csv"), index=True)
-    # # result.df.to_csv(os.path.join(args.result_path, "results.csv"), index=True)
+    result.df.to_csv(os.path.join(args.result_path, "results.csv"), index=True)
