@@ -15,6 +15,7 @@ import os
 import torch
 
 from eval_utils import Dataset, Results, METRICS, arguments, do_evaluations_parallel, get_executer, do_evaluations
+from eval_utils import Dataset, Results, arguments, do_evaluations_ensemble
 from tabpfn.scripts.tabular_metrics import (calculate_score, time_metric)
 
 
@@ -117,7 +118,9 @@ if __name__ == "__main__":
     log_folder = os.path.join(args.result_path, "log_test/")
     
     if not args.load_predefined_results:
-        if args.slurm:
+        if args.ensemble:
+            result = do_evaluations_ensemble(args, all_datasets)
+        elif args.slurm:
             if args.parallel:
                 result = do_evaluations_parallel(args, all_datasets, log_folder=log_folder)
                 result = post_process_chunks_result(args.chunk_size, result=result)
@@ -137,27 +140,10 @@ if __name__ == "__main__":
             result = do_evaluations(args, all_datasets)
 
         # Calculate metrics for results
-
         result = calculate_metrics(
             datasets=all_datasets,
             recorded_metrics=args.recorded_metrics,
             eval_positions=args.eval_positions,
             results=result)
-    else:
-
-        def read(_path: Path) -> dict:
-            with _path.open("rb") as f:
-                return pickle.load(f)
-
-        d = {
-            path.stem: read(path)
-            for path in args.predefined_results_path.iterdir()
-            if path.is_file()
-        }
-        result = Results.from_dict(
-            d,
-            datasets=all_datasets,
-            recorded_metrics=args.recorded_metrics,
-        )
 
     result.df.to_csv(os.path.join(args.result_path, "results.csv"), index=True)
