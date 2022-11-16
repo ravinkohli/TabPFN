@@ -22,6 +22,7 @@ from eval_utils import Dataset, Results, arguments, do_evaluations_ensemble, DEF
 from tabpfn.scripts.tabular_metrics import (calculate_score, time_metric)
 
 
+<<<<<<< HEAD
 def calculate_metrics(
     datasets: List[Dataset],
     recorded_metrics: List[str],
@@ -71,6 +72,9 @@ def post_process_chunks_result(
     Returns:
         Dict[str, Any]: _description_
     """
+=======
+def post_process_chunks_result(args, result):
+>>>>>>> bfeec42 (copy code from anonymous colab)
     final_results = {}
     for key in result:
         final_results[key] = []

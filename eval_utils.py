@@ -317,7 +317,7 @@ class Results:
             fit_time_key = f"{dataset.name}_fit_time_at_{pos}"
 
             # If there is a best config
-            if any(v.get(old_best_configs_key, [])):
+            if "transformer_gpu" not in k and "autosklearn" not in k and any(v.get(old_best_configs_key, [])):
                 assert len(v[old_best_configs_key]) == 1
 
                 best_config = v[old_best_configs_key][0]
@@ -342,7 +342,10 @@ class Results:
             ],
         )
 
-        metrics = recorded_metrics + ["time", "inference_time", "fit_time"]
+        metrics = recorded_metrics + ["inference_time", "fit_time"]
+        if "time" not in metrics:
+            metrics.append("time")
+
         columns = pd.MultiIndex.from_product(
             [metrics, dataset_names],
             names=["metric", "dataset"],
@@ -679,10 +682,8 @@ METHODS = {
     # svm
     "svm": tb.svm_metric,
     "svm_default": partial(tb.svm_metric, no_tune={}),
-    # autogluon
-    "autogluon": tb.autogluon_metric,
-    # gradient boosting
-    "gradient_boosting": tb.gradient_boosting_metric,
+    # # gradient boosting
+    # "gradient_boosting": tb.gradient_boosting_metric,
     "gradient_boosting_default": partial(tb.gradient_boosting_metric, no_tune={}),
     # gp
     "gp": clf_dict["gp"],
@@ -690,19 +691,23 @@ METHODS = {
         clf_dict["gp"],
         no_tune={"params_y_scale": 0.1, "params_length_scale": 0.1},
     ),
+    # autogluon
+    #"autogluon": clf_dict["autogluon"],
+    # autosklearn
+    "autosklearn2": clf_dict["autosklearn"],
     # lightgbm
     "lightgbm": clf_dict["lightgbm"],
     "lightgbm_default": partial(clf_dict["lightgbm"], no_tune={}),
     # catboost
-    "catboost": clf_dict["catboost"],
+    #"catboost": clf_dict["catboost"],
     "catboost_default": partial(clf_dict["catboost"], no_tune={}),
-    "catboost_gpu": partial(clf_dict["catboost"], gpu_id=0),
-    "catboost_default_gpu": partial(clf_dict["catboost"], no_tune={}, gpu_id=0),
+    # "catboost_gpu": partial(clf_dict["catboost"], gpu_id=0),
+    # "catboost_default_gpu": partial(clf_dict["catboost"], no_tune={}, gpu_id=0),
     # xgb
     "xgb": clf_dict["xgb"],
     "xgb_default": partial(clf_dict["xgb"], no_tune={}),
-    "xgb_default_gpu": partial(clf_dict['xgb'], no_tune={}, gpu_id=0),
-    "xgb_gpu": partial(clf_dict['xgb'], gpu_id=0),
+    "xgb_gpu": partial(clf_dict["xgb"], gpu_id=0),
+    #"xgb_default_gpu": partial(clf_dict["xgb"], gpu_id=0, no_tune={}),
     # random forest
     "random_forest": clf_dict["random_forest"],
     "rf_default": partial(clf_dict["random_forest"], no_tune={}),
@@ -716,8 +721,6 @@ METHODS = {
     "knn": clf_dict["knn"],
     # logistic classification
     "logistic": clf_dict["logistic"],
-    # naiveautoml
-    "naiveautoml": clf_dict["naiveautoml"],
     # Transformers
     "transformer_cpu_N_1": partial(
         clf_dict["transformer"], device="cpu", N_ensemble_configurations=1
