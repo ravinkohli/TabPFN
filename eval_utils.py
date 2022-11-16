@@ -1185,7 +1185,7 @@ def do_evaluations_parallel(args: argparse.Namespace, datasets, log_folder: str)
             overwrite=args.overwrite)
             )
 
-    return jobs if slurm else results
+    return jobs
 
 
 
