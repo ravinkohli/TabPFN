@@ -11,6 +11,7 @@ from itertools import chain, product
 from pathlib import Path
 import random
 from typing import Any, Callable, Optional, Tuple, Dict, Iterable, Sequence
+import os
 
 import matplotlib.pyplot as plt
 import matplotlib.transforms as mtransforms
@@ -1122,6 +1123,7 @@ def do_evaluations(args: argparse.Namespace, datasets: list[Dataset]) -> Results
         metric_name = tb.get_scoring_string(metric_f, usage="")
         key = f"{method}_time_{time}{metric_name}_split_{split}"
 
+        set_seed(seed=split)
         results[key] = eval_method(
             datasets=datasets,
             label=method,
@@ -1169,8 +1171,7 @@ def do_evaluations_parallel(args: argparse.Namespace, datasets, log_folder: str)
                 partition=args.partition,
                 log_folder=log_folder,
                 total_job_time_secs=total_job_time,
-                gpu=args.gpu
-                )
+                gpu=args.gpu)
             jobs[key].append(slurm_executer.submit(eval_method,
             datasets=sub_datasets,
             label=method,
@@ -1188,7 +1189,6 @@ def do_evaluations_parallel(args: argparse.Namespace, datasets, log_folder: str)
     return jobs
 
 
-
 def do_evaluations_ensemble(args: argparse.Namespace, datasets: list[Dataset]) -> Results:
     results = {}
 
@@ -1204,6 +1204,7 @@ def do_evaluations_ensemble(args: argparse.Namespace, datasets: list[Dataset]) -
         args.times,
         range(1, args.splits+1),
     ):
+        set_seed(seed=split)
         metric_f = METRICS[metric]
         metric_name = tb.get_scoring_string(metric_f, usage="")
 
@@ -1225,30 +1226,4 @@ def do_evaluations_ensemble(args: argparse.Namespace, datasets: list[Dataset]) -
             overwrite=args.overwrite,
         )
 
-    datasets_as_lists = [d.as_list() for d in datasets]
-
-    # This will update the results in place
-    for metric in args.recorded_metrics:
-        metric_f = METRICS[metric]
-        calculate_score(
-            metric=metric_f,
-            name=metric,
-            global_results=results,
-            ds=datasets_as_lists,
-            eval_positions=args.eval_positions,
-        )
-
-    # We also get the times
-    calculate_score(
-        metric=time_metric,
-        name="time",
-        global_results=results,
-        ds=datasets_as_lists,
-        eval_positions=args.eval_positions,
-    )
-    print(results.keys())
-    return Results.from_dict(
-        results,
-        datasets=datasets,
-        recorded_metrics=args.recorded_metrics + ["time"],
-    )
+    return results
