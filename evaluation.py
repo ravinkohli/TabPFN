@@ -96,7 +96,7 @@ if __name__ == "__main__":
         all_datasets = Dataset.fetch(args.datasets, only=filter_f)
 
     log_folder = os.path.join(args.result_path, "log_test/")
-    
+
     if args.ensemble:
         # assumes that args.methods passed provides baseline methods to combine with 1 tabpfn classifier
         # can be done locally.

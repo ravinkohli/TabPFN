@@ -1183,7 +1183,6 @@ def do_evaluations(args: argparse.Namespace, datasets: list[Dataset]) -> Results
             split=split,
             overwrite=args.overwrite,
         )
-
     return results
 
 
