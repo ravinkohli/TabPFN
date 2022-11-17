@@ -22,7 +22,7 @@ import torch
 from matplotlib.lines import Line2D
 
 import tabpfn.scripts.tabular_baselines as tb
-from tabpfn.datasets import load_openml_list, open_cc_dids, open_cc_valid_dids
+from tabpfn.datasets import load_openml_list, open_cc_dids, open_cc_valid_dids, automlbenchmark_ids
 from tabpfn.scripts.tabular_baselines import clf_dict
 from tabpfn.scripts.tabular_evaluation import check_file_exists, evaluate, get_scoring_string
 from tabpfn.scripts.tabular_metrics import (accuracy_metric, auc_metric,
@@ -46,7 +46,7 @@ METRICS = {
 
 PREDEFINED_RESULTS_PATH = HERE / "TabPFNResults" / "all_results"
 PREDFINED_DATASET_PATHS = HERE / "tabpfn" / "datasets" # / "TabPFN" 
-PREDEFINED_DATASET_COLLECTIONS = {
+PREDEFINED_DATASET_COLLECTIONS: dict[str, dict[str, Any]] = {
     "cc_valid": {
         "ids": open_cc_valid_dids,
         "path": PREDFINED_DATASET_PATHS / "cc_valid_datasets_multiclass.pickle",
@@ -55,6 +55,9 @@ PREDEFINED_DATASET_COLLECTIONS = {
         "ids": open_cc_dids,
         "path": PREDFINED_DATASET_PATHS / "cc_test_datasets_multiclass.pickle",
     },
+    "automlbenchmark_classification_271": {
+        "ids": automlbenchmark_ids,
+    }
 }
 
 
@@ -179,9 +182,13 @@ class Dataset:
         if (
             isinstance(identifier, str)
             and identifier in PREDEFINED_DATASET_COLLECTIONS
-            and not subsample_flag  # They're already downsampled
         ):
-            datasets = Dataset.from_predefined(identifier)
+            path = PREDEFINED_DATASET_COLLECTIONS[identifier].get("path")
+            if path and not subsample_flag:  # Already downsampled, we can't subsample them
+                return Dataset.from_pickle(path, task_types="multiclass")
+            else:
+                dids = PREDEFINED_DATASET_COLLECTIONS[identifier]["ids"]
+                return Dataset.from_openml(dids, subsample_flag=subsample_flag)
         elif isinstance(identifier, int):
             identifier = [identifier]
             datasets = Dataset.from_openml(identifier, subsample_flag=subsample_flag)
@@ -205,8 +212,7 @@ class Dataset:
     @classmethod
     def from_predefined(self, name: str) -> list[Dataset]:
         assert name in PREDEFINED_DATASET_COLLECTIONS
-        path = PREDEFINED_DATASET_COLLECTIONS[name]["path"]
-
+        path = PREDEFINED_DATASET_COLLECTIONS[name].get("path")
         return Dataset.from_pickle(path, task_types="multiclass")
 
     @classmethod
@@ -1106,7 +1112,6 @@ def arguments() -> argparse.Namespace:
     parser.add_argument(
         "--datasets",
         nargs="+",
-        type=int,
         help="List of test datasets",
     )
     parser.add_argument(
@@ -1170,7 +1175,19 @@ def arguments() -> argparse.Namespace:
     parser.add_argument("--parallel", action="store_true",
                         help="Paralleise execution of each split"
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    # Parse args.datasets manually as it could be a str or list of int
+    if args.datasets is not None:
+        try:
+            datasets = [int(i) for i in args.datasets]
+        except Exception:
+            assert len(args.datasets) == 1, args
+            datasets = args.datasets[0]
+
+        args.datasets = datasets
+
+    return args
 
 
 def do_evaluations(
