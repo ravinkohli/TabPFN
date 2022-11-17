@@ -172,14 +172,21 @@ class Dataset:
         self,
         identifier: str | int | list[int],
         only: Callable | None = None,
+        # Indicate that we shouldn't downsample the data as it will be done in the split
+        # procedure inside of evaluation
+        subsample_flag: bool = False,
     ) -> list[Dataset]:
-        if isinstance(identifier, str) and identifier in PREDEFINED_DATASET_COLLECTIONS:
+        if (
+            isinstance(identifier, str)
+            and identifier in PREDEFINED_DATASET_COLLECTIONS
+            and not subsample_flag  # They're already downsampled
+        ):
             datasets = Dataset.from_predefined(identifier)
         elif isinstance(identifier, int):
             identifier = [identifier]
-            datasets = Dataset.from_openml(identifier)
+            datasets = Dataset.from_openml(identifier, subsample_flag=subsample_flag)
         elif isinstance(identifier, list):
-            datasets = Dataset.from_openml(identifier)
+            datasets = Dataset.from_openml(identifier, subsample_flag=subsample_flag)
         else:
             raise ValueError(identifier)
 
@@ -213,6 +220,7 @@ class Dataset:
         return_capped: bool = False,
         shuffled: bool = True,
         multiclass: bool = True,
+        subsample_flag: bool = False,
     ) -> list[Dataset]:
         # TODO: should be parametrized, defaults taken from ipy notebook
         if not isinstance(dataset_id, list):
@@ -227,6 +235,7 @@ class Dataset:
             return_capped=return_capped,
             shuffled=shuffled,
             multiclass=multiclass,
+            subsample_flag=subsample_flag,
         )
         return [
             Dataset(  # type: ignore
@@ -763,6 +772,7 @@ def eval_method(
     fetch_only: bool = False,
     verbose: bool = False,
     bptt: int = 2000,
+    subsample: bool = False,
     overwrite: bool = False,
 ):
     """Evaluate a given method."""
@@ -794,6 +804,7 @@ def eval_method(
         split_id=split,
         verbose=verbose,
         max_time=max_time,
+        subsample=subsample,
     )
 
 def update_label(label, max_time, metric_used, append_metric):
@@ -1088,6 +1099,11 @@ def arguments() -> argparse.Namespace:
         help="The splits to evaluate",
     )
     parser.add_argument(
+        "--subsample",
+        action="store_true",
+        help="Subsample large datasets to 2_000 rows, 100 features, 10 classes"
+    )
+    parser.add_argument(
         "--datasets",
         nargs="+",
         type=int,
@@ -1157,7 +1173,10 @@ def arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def do_evaluations(args: argparse.Namespace, datasets: list[Dataset]) -> Results:
+def do_evaluations(
+    args: argparse.Namespace,
+    datasets: list[Dataset]
+) -> Results:
     results = {}
     for method, metric, time, split in product(
         args.methods,
@@ -1182,6 +1201,7 @@ def do_evaluations(args: argparse.Namespace, datasets: list[Dataset]) -> Results
             metric_used=metric_f,
             split=split,
             overwrite=args.overwrite,
+            subsample=args.subsample,
         )
     return results
 

@@ -6,7 +6,7 @@ import openml
 from tabpfn.constants import DEFAULT_SEED
 
 
-def get_openml_classification(did, max_samples, random_state=None, multiclass=True, shuffled=True):
+def get_openml_classification(did, max_samples, random_state=None, multiclass=True, shuffled=True, subsample_flag: bool = False):
     dataset = openml.datasets.get_dataset(did)
     X, y, categorical_indicator, attribute_names = dataset.get_data(
         dataset_format="array", target=dataset.default_target_attribute
@@ -34,7 +34,9 @@ def get_openml_classification(did, max_samples, random_state=None, multiclass=Tr
         random_state = random_state if random_state is not None else np.random.RandomState(DEFAULT_SEED)
         random_state.shuffle(order)
         X, y = torch.tensor(X[order]), torch.tensor(y[order])
-    if max_samples:
+
+    # If we are going to be subsampling, we need to make sure this gets skipped
+    if max_samples and not subsample_flag:
         X, y = X[:max_samples], y[:max_samples]
 
     return X, y, list(np.where(categorical_indicator)[0]), attribute_names
@@ -47,7 +49,8 @@ def load_openml_list(dids, random_state=None,
                      multiclass=True,
                      max_num_classes=10,
                      shuffled=True,
-                     return_capped=False):
+                     return_capped=False,
+                     subsample_flag: bool = False):
     datasets = []
     openml_list = openml.datasets.list_datasets(dids)
     print(f'Number of datasets: {len(openml_list)}')
@@ -57,8 +60,18 @@ def load_openml_list(dids, random_state=None,
         datalist = datalist[datalist['NumberOfInstancesWithMissingValues'] == 0]
         print(f'Number of datasets after Nan and feature number filtering: {len(datalist)}')
 
+    # If we are going to be subsampling later, we need to ensure it ends up with a
+    # different name
+    if subsample_flag:
+        datalist["name"] = datalist["name"].astype(str) + "-subsample-splits"
+
     for ds in datalist.index:
-        modifications = {'samples_capped': False, 'classes_capped': False, 'feats_capped': False}
+        # If we are going to subsample in the splits, these will all be capped
+        modifications = {
+            'samples_capped': subsample_flag,
+            'classes_capped': subsample_flag,
+            'feats_capped': subsample_flag,
+        }
         entry = datalist.loc[ds]
 
         print('Loading', entry['name'], entry.did, '..')
@@ -70,11 +83,13 @@ def load_openml_list(dids, random_state=None,
             X, y, categorical_feats, attribute_names = get_openml_classification(int(entry.did), max_samples,
                                                                                  multiclass=multiclass,
                                                                                  shuffled=shuffled,
-                                                                                 random_state=random_state)
+                                                                                 random_state=random_state,
+                                                                                 subsample_flag=subsample_flag)
         if X is None:
             continue
 
-        if X.shape[1] > num_feats:
+
+        if not subsample_flag and X.shape[1] > num_feats:
             if return_capped:
                 X = X[:, 0:num_feats]
                 categorical_feats = [c for c in categorical_feats if c < num_feats]
@@ -82,14 +97,15 @@ def load_openml_list(dids, random_state=None,
             else:
                 print('Too many features')
                 continue
-        if X.shape[0] == max_samples:
+
+        if not subsample_flag and X.shape[0] == max_samples:
             modifications['samples_capped'] = True
 
         if X.shape[0] < min_samples:
             print(f'Too few samples left')
             continue
 
-        if len(np.unique(y)) > max_num_classes:
+        if not subsample_flag and len(np.unique(y)) > max_num_classes:
             if return_capped:
                 X = X[y < np.unique(y)[10]]
                 y = y[y < np.unique(y)[10]]

@@ -89,11 +89,11 @@ if __name__ == "__main__":
     filter_f = lambda d: d.name != "flags"  # noqa: ignore
 
     if args.datasets is None:
-        valid_datasets = Dataset.fetch("cc_valid", only=filter_f)
-        test_datasets = Dataset.fetch("cc_test", only=filter_f)
+        valid_datasets = Dataset.fetch("cc_valid", only=filter_f, subsample_flag=args.subsample)
+        test_datasets = Dataset.fetch("cc_test", only=filter_f, subsample_flag=args.subsample)
         all_datasets = valid_datasets + test_datasets
     else:
-        all_datasets = Dataset.fetch(args.datasets, only=filter_f)
+        all_datasets = Dataset.fetch(args.datasets, only=filter_f, subsample_flag=args.subsample)
 
     log_folder = os.path.join(args.result_path, "log_test/")
 

@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import time
 import os
 from pathlib import Path
 from contextlib import nullcontext
 
 
-from sklearn.model_selection import RepeatedStratifiedKFold
+from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
 
 import torch
 from tqdm import tqdm
@@ -91,9 +93,11 @@ def evaluate(
     eval_positions,
     metric_used,
     model,
+    split_id: int,
     device='cpu',
     verbose=False,
     return_tensor=False,
+    subsample: bool = False,
     **kwargs
 ):
     """
@@ -142,6 +146,8 @@ def evaluate(
                 eval_position=eval_position_real,
                 metric_used=metric_used,
                 device=device,
+                subsample=subsample,
+                split_id=split_id,
                 **kwargs
             )
 
@@ -197,6 +203,61 @@ def evaluate(
 INTERNAL HELPER FUNCTIONS
 ===============================
 """
+def subsample_data(
+    x: np.ndarray,
+    y: np.ndarray,
+    seed: int,
+    # Basically constant as they don't get passed
+    nrows_max: int = 2_000,
+    ncols_max: int = 100,
+    nclasses_max: int = 10,
+    stratified: bool = True,
+) -> tuple[np.ndarray, np.ndarray]:
+    rng = np.random.default_rng(seed)
+
+    # Sample classes accordingy to their frequency as a weight
+    classes, counts = np.unique(y, return_counts=True)
+    if len(classes) > nclasses_max:
+        selected_classes = rng.choice(
+            classes,
+            size=nclasses_max,
+            replace=False,
+            p=counts / sum(counts)
+        )
+
+        # Select the indices where one of these classes is present
+        idxs = np.where(np.isin(y, selected_classes)).flatten()
+        x = x[idxs]
+        y = y[idxs]
+
+    # Uniformly sample columns if required
+    ncols = x.shape[1]
+    if ncols > ncols_max:
+        columns_idxs = rng.choice(
+            list(range(ncols)),
+            size=ncols_max,
+            replace=False,
+        )
+        sorted_column_idxs = sorted(columns_idxs)
+        x = x[:, sorted_column_idxs]
+
+    # Subselect rows in a stratified manner ot keep classe balance
+    nrows = x.shape[0]
+    if nrows > nrows_max:
+        # Stratify accordingly
+        _, x, _, y = train_test_split(
+            x, y,
+            test_size=nrows_max,
+            stratify=y,
+            shuffle=True,
+            random_state=seed,
+        )
+
+    print(x.shape, y.shape)
+
+    return x, y
+
+
 
 def check_file_exists(path):
     """Checks if a pickle file exists. Returns None if not, else returns the unpickled file."""
@@ -206,16 +267,20 @@ def check_file_exists(path):
             return np.load(f, allow_pickle=True).tolist()
     return None
 
-def generate_valid_split(X, y, bptt, eval_position, is_classification, split_id=1):
+def generate_valid_split(X, y, bptt, eval_position, is_classification, split_id=1, subsample: bool = False):
     """Generates a deteministic train-(test/valid) split. Both splits must contain the same classes and all classes in
     the entire datasets. If no such split can be sampled in 7 passes, returns None.
     :param X: torch tensor, feature values
     :param y: torch tensor, class values
     :param bptt: Number of samples in train + test
     :param eval_position: Number of samples in train, i.e. from which index values are in test
+    :param subsample: Whether to subsample too large datasets
     :param split_number: The split id
     :return:
     """
+    if subsample:
+        X, y = subsample_data(X, y, seed=split_id)
+
     done, seed = False, 13
 
     torch.manual_seed(split_id)
@@ -263,6 +328,7 @@ def evaluate_position(
     split_id=1,
     metric_used=None,
     device='cpu',
+    subsample: bool = False,
     per_step_normalization=False, **kwargs):
     """
     Evaluates a dataset with a 'bptt' number of training samples.
@@ -281,6 +347,7 @@ def evaluate_position(
     :param ds_name: Datset name.
     :param fetch_only: Wheater to calculate or only fetch results.
     :param per_step_normalization:
+    :param subsample: Wheater to also subsample when doing splits if the dataset is too large
     :param kwargs:
     :return:
     """
@@ -305,7 +372,7 @@ def evaluate_position(
     ## Generate data splits
     eval_xs, eval_ys = generate_valid_split(X, y, bptt, eval_position,
                                             is_classification=tabular_metrics.is_classification(metric_used),
-                                            split_id=split_id)
+                                            split_id=split_id, subsample=subsample)
     if eval_xs is None:
         print(f"No dataset could be generated {ds_name} {bptt}")
         return None
