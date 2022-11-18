@@ -1,0 +1,4 @@
+metric,,,,,roc,cross_entropy,acc,brier_score,ece,time,inference_time,fit_time
+dataset,,,,,KnuggetChase3,KnuggetChase3,KnuggetChase3,KnuggetChase3,KnuggetChase3,KnuggetChase3,KnuggetChase3,KnuggetChase3
+method,optimization_metric,optimization_time,eval_position,split,,,,,,,,
+transformer_cpu_N_1,roc_auc,30.0,1000,1,0.7260802469135802,0.39010435,0.845360824742268,0.23480853,0.06103103,0.6397712230682373,,
