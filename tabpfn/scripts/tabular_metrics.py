@@ -55,12 +55,14 @@ def auc_metric(target, pred, multi_class='ovo', numpy=False):
         return np.nan if numpy else torch.tensor(np.nan)
 
 def accuracy_metric(target, pred):
-    target = torch.tensor(target) if not torch.is_tensor(target) else target
-    pred = torch.tensor(pred) if not torch.is_tensor(pred) else pred
-    if len(torch.unique(target)) > 2:
-        return torch.tensor(accuracy_score(target, torch.argmax(pred, -1)))
-    else:
-        return torch.tensor(accuracy_score(target, pred[:, 1] > 0.5))
+    return torch.tensor(accuracy_score(target, pred))
+
+    # target = torch.tensor(target) if not torch.is_tensor(target) else target
+    # pred = torch.tensor(pred) if not torch.is_tensor(pred) else pred
+    # if len(torch.unique(target)) > 2:
+    #     return torch.tensor(accuracy_score(target, torch.argmax(pred, -1)))
+    # else:
+    #     return torch.tensor(accuracy_score(target, pred[:, 1] > 0.5))
 
 def brier_score_metric(target, pred):
     target = torch.tensor(target) if not torch.is_tensor(target) else target

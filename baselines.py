@@ -122,9 +122,10 @@ def decision_tree_metric(x, y, test_x, test_y, cat_features, numerical_features,
 ## Gradient Boosting
 param_grid_hyperopt['hist_gradient_boosting'] = {}
 def hist_gradient_boosting_metric(x, y, test_x, test_y, cat_features, numerical_features, metric_used, seed, max_time=300, no_tune=None):
+    from sklearn.experimental import enable_hist_gradient_boosting
     from sklearn import ensemble
     x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y,
-                                             one_hot=True, impute=True, standardize=True,
+                                             one_hot=True, impute=False, standardize=False,
                                              cat_features=cat_features, numerical_features=numerical_features)
 
     def clf_(**params):

@@ -7,6 +7,7 @@ from catboost import CatBoostClassifier, Pool
 from sklearn.model_selection import GridSearchCV
 from sklearn.model_selection import KFold
 from sklearn.model_selection import ParameterGrid
+import sklearn.pipeline
 
 import tempfile
 import random
@@ -41,7 +42,7 @@ import time
 
 from hyperopt import fmin, tpe, hp, STATUS_OK, Trials , space_eval, rand
 from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OneHotEncoder
+from sklearn.preprocessing import OneHotEncoder, LabelEncoder
 from sklearn.preprocessing import MinMaxScaler
 
 CV = 5
@@ -190,16 +191,20 @@ def eval_complete_f(x, y, test_x, test_y, key, clf_, metric_used, seed, max_time
 
     start = time.time()
     clf = clf_(**best)
+    print(x)
+    print(y)
     clf.fit(x, y)
     fit_time = time.time() - start
     start = time.time()
-    if is_classification(metric_used):
+    if hasattr(clf, 'predict_proba'):
+        print("predicting probabilities")
         pred = clf.predict_proba(test_x)
     else:
+        print("predicting probabilities")
         pred = clf.predict(test_x)
     inference_time = time.time() - start
     metric = metric_used(test_y, pred)
-    
+
     best = {'best': best}
     best['fit_time'] = fit_time
     best['inference_time'] = inference_time
@@ -260,7 +265,7 @@ def naiveatuoml_metric(x, y, test_x, test_y, cat_features, metric_used, seed, ma
 
     MAX_HPO_ITERATIONS = 10
     multiclass = False
-    if is_classification(metric_used):
+    if hasattr(clf_, 'predict_proba'):
         multiclass = len(np.unique(y)) > 2
     
 
@@ -272,7 +277,7 @@ def naiveatuoml_metric(x, y, test_x, test_y, cat_features, metric_used, seed, ma
 
     classifier.fit(x, y)
     print('Train data shape', x.shape, ' Test data shape', test_x.shape)
-    predict_function = 'predict_proba' if is_classification(metric_used) else 'predict'
+    predict_function = 'predict_proba' if hasattr(classifier, 'predict_proba') else 'predict'
     pred = getattr(classifier, predict_function)(test_x)
 
     metric = metric_used(test_y, pred)
@@ -308,7 +313,7 @@ def autogluon_metric(x, y, test_x, test_y, cat_features, metric_used, seed, max_
         # The seed is deterministic but varies for each dataset and each split of it
     )
 
-    if is_classification(metric_used):
+    if hasattr(predictor, 'predict_proba'):
         pred = predictor.predict_proba(test_data, as_multiclass=True).values
     else:
         pred = predictor.predict(test_data).values
@@ -1076,20 +1081,18 @@ def lightgbm_metric(x, y, test_x, test_y, cat_features, metric_used, seed, max_t
                            max_time=max_time,
                            no_tune=no_tune)
 
-param_grid_hyperopt['logistic'] = {
-    'penalty': hp.choice('penalty', ['l1', 'l2', 'none'])
-    , 'max_iter': hp.randint('max_iter', 50, 500)
-    , 'fit_intercept': hp.choice('fit_intercept', [True, False])
-    , 'C': hp.loguniform('C', -5, math.log(5.0))}  # 'normalize': [False],
-
-
+param_grid_hyperopt['logistic'] = {}
+    # 'penalty': hp.choice('penalty', ['l1', 'l2', 'none'])
+    # , 'max_iter': hp.randint('max_iter', 50, 500)
+    # , 'fit_intercept': hp.choice('fit_intercept', [True, False])
+    # , 'C': hp.loguniform('C', -5, math.log(5.0))}  # 'normalize': [False],
 def logistic_metric(x, y, test_x, test_y, cat_features, metric_used, seed, max_time=300, no_tune=None):
     x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y
                                              , one_hot=True, impute=True, standardize=True
                                              , cat_features=cat_features)
 
     def clf_(**params):
-        return LogisticRegression(solver='saga', tol=1e-4, n_jobs=MULTITHREAD, **params)
+        return LogisticRegression(n_jobs=MULTITHREAD, **params)
 
     return eval_complete_f(x, y, test_x, test_y, 'logistic', clf_,
                            metric_used=metric_used,
@@ -1105,15 +1108,15 @@ param_grid_hyperopt['random_forest'] = {'n_estimators': hp.randint('n_estimators
                'max_features': hp.choice('max_features', ['auto', 'sqrt']),
                'max_depth': hp.randint('max_depth', 1, 45),
                'min_samples_split': hp.choice('min_samples_split', [5, 10])}
-def random_forest_metric(x, y, test_x, test_y, cat_features, metric_used, seed, max_time=300, no_tune=None):
+def random_forest_metric(x, y, test_x, test_y, cat_features, numerical_features, metric_used, seed, max_time=300, no_tune=None):
     from sklearn.ensemble import RandomForestClassifier
 
     x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y,
                                              one_hot=False, impute=True, standardize=False,
-                                             cat_features=cat_features)
+                                             cat_features=cat_features, numerical_features=numerical_features)
 
     def clf_(**params):
-        if is_classification(metric_used):
+        if hasattr(clf_, 'predict_proba'):
             return RandomForestClassifier(n_jobs=MULTITHREAD, **params)
         return RandomForestClassifier(n_jobs=MULTITHREAD, **params)
 
@@ -1132,7 +1135,7 @@ def gradient_boosting_metric(x, y, test_x, test_y, cat_features, metric_used, se
                                              cat_features=cat_features)
 
     def clf_(**params):
-        if is_classification(metric_used):
+        if hasattr(clf_, 'predict_proba'):
             return ensemble.GradientBoostingClassifier(**params)
         return ensemble.GradientBoosting(**params)
 
@@ -1142,15 +1145,52 @@ def gradient_boosting_metric(x, y, test_x, test_y, cat_features, metric_used, se
                            max_time=max_time,
                            no_tune=no_tune)
 
-## SVM
-param_grid_hyperopt['svm'] = {'C': hp.choice('C', [0.1,1, 10, 100]), 'gamma': hp.choice('gamma', ['auto', 'scale']),'kernel': hp.choice('kernel', ['rbf', 'poly', 'sigmoid'])}
-def svm_metric(x, y, test_x, test_y, cat_features, metric_used, seed, max_time=300, no_tune=None):
+
+## Gradient Boosting
+param_grid_hyperopt['decision_tree'] = {}
+def decision_tree_metric(x, y, test_x, test_y, cat_features, numerical_features, metric_used, seed, max_time=300, no_tune=None):
+    from sklearn import tree
     x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y,
-                                             one_hot=True, impute=True, standardize=True,
-                                             cat_features=cat_features)
+                                             one_hot=False, impute=True, standardize=False,
+                                             cat_features=cat_features, numerical_features=numerical_features)
 
     def clf_(**params):
-        if is_classification(metric_used):
+        if hasattr(clf_, 'predict_proba'):
+            return tree.DecisionTreeClassifier(**params)
+        return tree.DecisionTreeClassifier(**params)
+
+    return eval_complete_f(x, y, test_x, test_y, 'decision_tree', clf_,
+                           metric_used=metric_used,
+                           seed=seed,
+                           max_time=max_time,
+                           no_tune=no_tune)
+
+## Gradient Boosting
+param_grid_hyperopt['hist_gradient_boosting'] = {}
+def hist_gradient_boosting_metric(x, y, test_x, test_y, cat_features, numerical_features, metric_used, seed, max_time=300, no_tune=None):
+    from sklearn import ensemble
+    x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y,
+                                             one_hot=True, impute=True, standardize=True,
+                                             cat_features=cat_features, numerical_features=numerical_features)
+
+    def clf_(**params):
+        return ensemble.HistGradientBoostingClassifier(**params)
+
+    return eval_complete_f(x, y, test_x, test_y, 'hist_gradient_boosting', clf_,
+                           metric_used=metric_used,
+                           seed=seed,
+                           max_time=max_time,
+                           no_tune=no_tune)
+
+## SVM
+param_grid_hyperopt['svm'] = {'C': hp.choice('C', [0.1,1, 10, 100]), 'gamma': hp.choice('gamma', ['auto', 'scale']),'kernel': hp.choice('kernel', ['rbf', 'poly', 'sigmoid'])}
+def svm_metric(x, y, test_x, test_y, cat_features, numerical_features, metric_used, seed, max_time=300, no_tune=None):
+    x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y,
+                                             one_hot=True, impute=True, standardize=True,
+                                             cat_features=cat_features, numerical_features=numerical_features)
+
+    def clf_(**params):
+        if hasattr(clf_, 'predict_proba'):
             return sklearn.svm.SVC(probability=True,**params)
         return sklearn.svm.SVR(**params)
 
@@ -1169,11 +1209,30 @@ def knn_metric(x, y, test_x, test_y, cat_features, metric_used, seed, max_time=3
                                              cat_features=cat_features)
 
     def clf_(**params):
-        if is_classification(metric_used):
+        if hasattr(clf_, 'predict_proba'):
             return neighbors.KNeighborsClassifier(n_jobs=MULTITHREAD, **params)
         return neighbors.KNeighborsRegressor(n_jobs=MULTITHREAD, **params)
 
     return eval_complete_f(x, y, test_x, test_y, 'knn', clf_,
+                           metric_used=metric_used,
+                           seed=seed,
+                           max_time=max_time,
+                           no_tune=no_tune)
+
+## mlp
+param_grid_hyperopt['mlp'] = {}
+def sklearn_mlp_metric(x, y, test_x, test_y, cat_features, numerical_features, metric_used, seed, max_time=300, no_tune=None):
+    from sklearn import neural_network
+    x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y,
+                                             one_hot=True, impute=True, standardize=True,
+                                             cat_features=cat_features,
+                                             numerical_features=numerical_features)
+    def clf_(**params):
+        if hasattr(clf_, 'predict_proba'):
+            return neural_network.MLPClassifier(**params)
+        return neural_network.MLPRegressor(**params)
+
+    return eval_complete_f(x, y, test_x, test_y, 'mlp', clf_,
                            metric_used=metric_used,
                            seed=seed,
                            max_time=max_time,
@@ -1191,7 +1250,7 @@ def gp_metric(x, y, test_x, test_y, cat_features, metric_used, seed, max_time=30
 
     def clf_(params_y_scale=None,params_length_scale=None, **params):
         kernel = params_y_scale * RBF(params_length_scale) if params_length_scale is not None else None
-        if is_classification(metric_used):
+        if hasattr(clf_, 'predict_proba'):
             return GaussianProcessClassifier(kernel=kernel, random_state=seed, **params)
         else:
             return GaussianProcessRegressor(kernel=kernel, ranom_state=seed, **params)
@@ -1314,7 +1373,7 @@ def catboost_metric(x, y, test_x, test_y, cat_features, metric_used, seed, max_t
     test_x = make_pd_from_np(test_x)
 
     def clf_(**params):
-        if is_classification(metric_used):
+        if hasattr(clf_, 'predict_proba'):
             return CatBoostClassifier(
                                     loss_function=get_scoring_string(metric_used, usage='catboost'),
                                     thread_count = MULTITHREAD,
@@ -1375,7 +1434,7 @@ def xgb_metric(x, y, test_x, test_y, cat_features, metric_used, seed, max_time=3
                                              standardize=False)
 
     def clf_(**params):
-        if is_classification(metric_used):
+        if hasattr(clf_, 'predict_proba'):
             return xgb.XGBClassifier(use_label_encoder=False,
                                      nthread=MULTITHREAD,
                                      random_state=seed,
@@ -1487,4 +1546,7 @@ clf_dict = {'gp': gp_metric
              , 'autosklearn2': autosklearn2_metric
             , 'autogluon': autogluon_metric,
             'cocktail': well_tuned_simple_nets_metric,
-            "naiveautoml": naiveatuoml_metric}
+            "naiveautoml": naiveatuoml_metric,
+            'mlp': sklearn_mlp_metric,
+            'hist_gradient_boosting': hist_gradient_boosting_metric,
+            'decision_tree': decision_tree_metric}
