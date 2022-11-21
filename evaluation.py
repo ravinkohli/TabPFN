@@ -67,9 +67,13 @@ def post_process_chunks_result(
         new_item = {}
         sum_aggregate_metric = torch.tensor(0.0)
         for i, item in enumerate(result[key]):
-            individual_result = item.result()
-            sum_aggregate_metric += individual_result['sum_aggregate_metric']
-            new_item = {**new_item, **individual_result}
+            try:
+                individual_result = item.result()
+                sum_aggregate_metric += individual_result['sum_aggregate_metric']
+                new_item = {**new_item, **individual_result}
+            except Exception as e:
+                print(f"Failed for {key} with {repr(e)}")
+   
         new_item.pop('sum_aggregate_metric', None)
         new_item['mean_metric'] = sum_aggregate_metric / ((i+1)*chunk_size)
         final_results[key] = new_item

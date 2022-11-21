@@ -123,16 +123,16 @@ def get_executer_class(partition: str) -> SlurmExecutor:
     return PARTITION_TO_EXECUTER[key]
 
 
-def get_executer_params(timeout: float, partition: str, gpu: bool = False) -> Dict[str, Any]:
+def get_executer_params(timeout: float, partition: str, gpu: bool = False, array_parallelism=5) -> Dict[str, Any]:
     if gpu:
-        return {'timeout_min': int(timeout), 'slurm_partition': partition, 'slurm_tasks_per_node': 1, 'slurm_gres': "gpu:1"}
+        return {'timeout_min': int(timeout), 'slurm_partition': partition, 'slurm_tasks_per_node': 1, 'slurm_gres': "gpu:1"} # , "slurm_array_parallelism": array_parallelism}
     else:
-        return {'time': int(timeout), 'partition': partition, 'mem_per_cpu': 6000, 'nodes': 1, 'cpus_per_task': 1, 'ntasks_per_node': 1}
+        return {'time': int(timeout), 'partition': partition, 'mem_per_cpu': 6000, 'nodes': 1, 'cpus_per_task': 1, 'ntasks_per_node': 1} #, 'array_parallelism': array_parallelism}
 
 
-def get_executer(partition: str, log_folder: str, gpu: bool=False, total_job_time_secs: float = 3600):
+def get_executer(partition: str, log_folder: str, array_parallelism=5, gpu: bool=False, total_job_time_secs: float = 3600):
     slurm_executer = get_executer_class(partition)(folder=log_folder)
-    slurm_executer.update_parameters(**get_executer_params(np.ceil(total_job_time_secs/60), partition, gpu))
+    slurm_executer.update_parameters(**get_executer_params(np.ceil(total_job_time_secs/60), partition, gpu, array_parallelism=array_parallelism))
     return slurm_executer
 
 
@@ -699,7 +699,7 @@ METHODS = {
     "svm": tb.svm_metric,
     "svm_default": partial(tb.svm_metric, no_tune={}),
     # # gradient boosting
-    # "gradient_boosting": tb.gradient_boosting_metric,
+    "gradient_boosting": tb.gradient_boosting_metric,
     "gradient_boosting_default": partial(tb.gradient_boosting_metric, no_tune={}),
     # gp
     "gp": clf_dict["gp"],
@@ -708,22 +708,24 @@ METHODS = {
         no_tune={"params_y_scale": 0.1, "params_length_scale": 0.1},
     ),
     # autogluon
-    #"autogluon": clf_dict["autogluon"],
+    "autogluon": clf_dict["autogluon"],
     # autosklearn
     "autosklearn2": clf_dict["autosklearn"],
     # lightgbm
     "lightgbm": clf_dict["lightgbm"],
     "lightgbm_default": partial(clf_dict["lightgbm"], no_tune={}),
     # catboost
-    #"catboost": clf_dict["catboost"],
+    "catboost": clf_dict["catboost"],
     "catboost_default": partial(clf_dict["catboost"], no_tune={}),
-    # "catboost_gpu": partial(clf_dict["catboost"], gpu_id=0),
-    # "catboost_default_gpu": partial(clf_dict["catboost"], no_tune={}, gpu_id=0),
+    "catboost_gpu": partial(clf_dict["catboost"], gpu_id=0),
+    "catboost_default_gpu": partial(clf_dict["catboost"], no_tune={}, gpu_id=0),
     # xgb
     "xgb": clf_dict["xgb"],
+    "xgb_onehot": partial(clf_dict["xgb"], preprocess="onehot"),
     "xgb_default": partial(clf_dict["xgb"], no_tune={}),
+    "xgb_default_onehot": partial(clf_dict["xgb"], no_tune={}, preprocess="onehot"),
     "xgb_gpu": partial(clf_dict["xgb"], gpu_id=0),
-    #"xgb_default_gpu": partial(clf_dict["xgb"], gpu_id=0, no_tune={}),
+    "xgb_default_gpu": partial(clf_dict["xgb"], gpu_id=0, no_tune={}),
     # random forest
     "random_forest": clf_dict["random_forest"],
     "rf_default": partial(clf_dict["random_forest"], no_tune={}),
@@ -1248,7 +1250,7 @@ def do_evaluations_parallel(args: argparse.Namespace, datasets, log_folder: str)
                 jobs[key] = []
 
             # give atleast 1 min per split and 1.5 times the opt_time
-            total_job_time = max(time * 1.5, 60) * args.chunk_size
+            total_job_time = max(time * 1.5, 120) * args.chunk_size
             slurm_executer = get_executer(
                 partition=args.partition,
                 log_folder=log_folder,
@@ -1265,7 +1267,9 @@ def do_evaluations_parallel(args: argparse.Namespace, datasets, log_folder: str)
             max_time=time,
             metric_used=metric_f,
             split=split,
-            overwrite=args.overwrite)
+            overwrite=args.overwrite,
+            subsample=args.subsample
+            )
             )
 
     return jobs
@@ -1306,6 +1310,7 @@ def do_evaluations_ensemble(args: argparse.Namespace, datasets: list[Dataset]) -
             metric_used=metric_f,
             split=split,
             overwrite=args.overwrite,
+            subsample=args.subsample
         )
 
     return results
