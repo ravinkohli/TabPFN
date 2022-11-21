@@ -20,7 +20,6 @@ from sklearn.impute import SimpleImputer
 
 
 from sklearn.base import BaseEstimator, ClassifierMixin
-import xgboost as xgb
 from sklearn import neighbors
 from sklearn.gaussian_process import GaussianProcessClassifier
 from sklearn.gaussian_process.kernels import RBF
