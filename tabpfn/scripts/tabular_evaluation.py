@@ -405,6 +405,14 @@ def evaluate_position(
         print(f"Execution failed: {method, ds_name}")
         return None
 
+    try:
+        trials = best_configs[0].pop("trials")
+        path_trial_pickle = path.replace(".npy", "_trial.pkl")
+        if not os.path.exists(path_trial_pickle):
+            pickle.dump(trials, open(path_trial_pickle, "wb"))
+    except Exception as e:
+        print(f"Saving trial failed: {repr(e)}")
+
     if torch.is_tensor(outputs): # Transfers data to cpu for saving
         outputs = outputs.cpu()
         eval_ys = eval_ys.cpu()

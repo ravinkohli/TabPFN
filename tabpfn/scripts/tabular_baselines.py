@@ -165,6 +165,7 @@ def eval_complete_f(x, y, test_x, test_y, key, clf_, metric_used, seed, max_time
     def stop(trial):
         return time.time() - start_time > max_time, []
 
+    trials = None
     if no_tune is None:
       default = eval_f({}, clf_, x, y, metric_used)
       trials = Trials()
@@ -202,6 +203,8 @@ def eval_complete_f(x, y, test_x, test_y, key, clf_, metric_used, seed, max_time
     best = {'best': best}
     best['fit_time'] = fit_time
     best['inference_time'] = inference_time
+
+    best['trials'] = trials
 
     return metric, pred, best#, times
 
@@ -1368,7 +1371,7 @@ param_grid_hyperopt['xgb'] = {
     'n_estimators': hp.randint('n_estimators', 100, 4000), # This is smaller than in paper
 }
 
-def xgb_metric(x, y, test_x, test_y, cat_features, metric_used, seed, max_time=300, no_tune=None, gpu_id=None):
+def xgb_metric(x, y, test_x, test_y, cat_features, metric_used, seed, max_time=300, no_tune=None, gpu_id=None, preprocess='standard'):
     import xgboost as xgb
     # XGB Documentation:
     # XGB handles categorical data appropriately without using One Hot Encoding, categorical features are experimetal
@@ -1378,9 +1381,9 @@ def xgb_metric(x, y, test_x, test_y, cat_features, metric_used, seed, max_time=3
          gpu_params = {'tree_method':'gpu_hist', 'gpu_id':gpu_id}
     else:
         gpu_params = {}
-
+    one_hot_encode = 'one_hot' in preprocess
     x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y,
-                                             one_hot=False,
+                                             one_hot=one_hot_encode,
                                              cat_features=cat_features,
                                              impute=False,
                                              standardize=False)

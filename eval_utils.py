@@ -22,7 +22,7 @@ import torch
 from matplotlib.lines import Line2D
 
 import tabpfn.scripts.tabular_baselines as tb
-from tabpfn.datasets import load_openml_list, open_cc_dids, open_cc_valid_dids, automlbenchmark_ids
+from tabpfn.datasets import load_openml_list, open_cc_dids, open_cc_valid_dids, automlbenchmark_ids, grinzstjan_numerical_classification, grinzstjan_categorical_classification
 from tabpfn.scripts.tabular_baselines import clf_dict
 from tabpfn.scripts.tabular_evaluation import check_file_exists, evaluate, get_scoring_string
 from tabpfn.scripts.tabular_metrics import (accuracy_metric, auc_metric,
@@ -57,6 +57,9 @@ PREDEFINED_DATASET_COLLECTIONS: dict[str, dict[str, Any]] = {
     },
     "automlbenchmark_classification_271": {
         "ids": automlbenchmark_ids,
+    },
+    "grinzstjan": {
+        "ids": grinzstjan_numerical_classification + grinzstjan_categorical_classification,
     }
 }
 
