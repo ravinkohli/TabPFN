@@ -3,7 +3,6 @@ tabpfn_path = '../../'
 sys.path.insert(0, tabpfn_path)
 
 import pandas
-from catboost import CatBoostClassifier, Pool
 from sklearn.model_selection import GridSearchCV
 from sklearn.model_selection import KFold
 from sklearn.model_selection import ParameterGrid
@@ -284,13 +283,14 @@ def naiveatuoml_metric(x, y, test_x, test_y, cat_features, metric_used, seed, ma
 # WARNING: Crashes for some predictors for regression
 def autogluon_metric(x, y, test_x, test_y, cat_features, metric_used, seed, max_time=300):
     from autogluon.tabular import TabularPredictor
+    # Preprocess basically doesn't do anything here
     x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y
                                              , one_hot=False
                                              , cat_features=cat_features
                                              , impute=False
                                              , standardize=False)
-    train_data = pd.DataFrame(np.concatenate([x, y[:, np.newaxis]], 1))
-    test_data = pd.DataFrame(np.concatenate([test_x, test_y[:, np.newaxis]], 1))
+    train_data = pd.DataFrame(np.concatenate([x, y[:, np.newaxis]], axis=1))
+    test_data = pd.DataFrame(np.concatenate([test_x, test_y[:, np.newaxis]], axis=1))
     if is_classification(metric_used):
         problem_type = 'multiclass' if len(np.unique(y)) > 2 else 'binary'
     else:
@@ -931,9 +931,7 @@ def autosklearn_metric(x, y, test_x, test_y, cat_features, metric_used, seed, ma
     return autosklearn2_metric(x, y, test_x, test_y, cat_features, metric_used, seed, max_time=max_time, version=1)
 
 def autosklearn2_metric(x, y, test_x, test_y, cat_features, metric_used, seed, max_time=300, version=2):
-    from autosklearn.experimental.askl2 import AutoSklearn2Classifier
-    from autosklearn.classification import AutoSklearnClassifier
-    from autosklearn.regression import AutoSklearnRegressor
+    # Basically doesn't do anything here
     x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y,
                                              one_hot=False,
                                              cat_features=cat_features,
@@ -950,17 +948,29 @@ def autosklearn2_metric(x, y, test_x, test_y, cat_features, metric_used, seed, m
     test_x = make_pd_from_np(test_x)
 
     if is_classification(metric_used):
-        clf_ = AutoSklearn2Classifier if version == 2 else AutoSklearnClassifier
+        if version == 2:
+            from autosklearn.experimental.askl2 import AutoSklearn2Classifier
+            clf_ = AutoSklearn2Classifier
+        else:
+            from autosklearn.classification import AutoSklearnClassifier
+            clf_ = AutoSklearnClassifier
     else:
         if version == 2:
             raise Exception("AutoSklearn 2 doesn't do regression.")
+        from autosklearn.regression import AutoSklearnRegressor
         clf_ = AutoSklearnRegressor
-    clf = clf_(time_left_for_this_task=max_time,
-               memory_limit=4000,
-               n_jobs=MULTITHREAD,
-               seed=seed,
-        # The seed is deterministic but varies for each dataset and each split of it
-               metric=get_scoring_string(metric_used, usage='autosklearn', multiclass=len(np.unique(y)) > 2))
+
+    clf = clf_(
+        time_left_for_this_task=int(max_time),
+        memory_limit=4_000,
+        n_jobs=MULTITHREAD,
+        seed=seed,
+        metric=get_scoring_string(
+            metric_used,
+            usage='autosklearn',
+            multiclass=len(np.unique(y)) > 2
+        )
+    )
 
     # fit model to data
     clf.fit(x, y)
@@ -1289,6 +1299,7 @@ param_grid_hyperopt['catboost'] = {
 }
 
 def catboost_metric(x, y, test_x, test_y, cat_features, metric_used, seed, max_time=300, no_tune=None, gpu_id=None):
+    from catboost import CatBoostClassifier
     x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y
                                              , one_hot=False
                                              , cat_features=cat_features
