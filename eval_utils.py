@@ -710,7 +710,8 @@ METHODS = {
     # autogluon
     "autogluon": clf_dict["autogluon"],
     # autosklearn
-    "autosklearn2": clf_dict["autosklearn"],
+    "autosklearn": clf_dict["autosklearn"],
+    "autosklearn2": clf_dict["autosklearn2"],
     # lightgbm
     "lightgbm": clf_dict["lightgbm"],
     "lightgbm_default": partial(clf_dict["lightgbm"], no_tune={}),
