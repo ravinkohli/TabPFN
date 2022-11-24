@@ -99,6 +99,8 @@ if __name__ == "__main__":
     else:
         all_datasets = Dataset.fetch(args.datasets, only=filter_f, subsample_flag=args.subsample)
 
+    print("Loaded all datasets")
+
     log_folder = os.path.join(args.result_path, "log_test/")
 
     if args.ensemble:
@@ -121,6 +123,7 @@ if __name__ == "__main__":
     else:
         if args.slurm:
             if args.parallel:
+                print("Doing parallel evaluations on Slurm")
                 # runs each split, method on "args.chunk_size" datasets as paralle jobs. 
                 jobs = do_evaluations_parallel(args, all_datasets, log_folder=log_folder)
                 for experiment_key, chunked_job in jobs.items():

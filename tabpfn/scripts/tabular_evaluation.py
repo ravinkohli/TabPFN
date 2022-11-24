@@ -226,7 +226,11 @@ def subsample_data(
         )
 
         # Select the indices where one of these classes is present
-        idxs = np.where(np.isin(y, selected_classes)).flatten()
+        idxs = np.where(np.isin(y, selected_classes))
+        if isinstance(idxs, tuple):
+            idxs = idxs[0]
+        if len(idxs.shape) > 1 and idxs.shape[1] == 1:
+            idxs = idxs.flatten()
         x = x[idxs]
         y = y[idxs]
 

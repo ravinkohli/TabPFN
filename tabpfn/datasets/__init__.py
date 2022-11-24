@@ -7,6 +7,11 @@ from tabpfn.constants import DEFAULT_SEED
 
 
 def get_openml_classification(did, max_samples, random_state=None, multiclass=True, shuffled=True, subsample_flag: bool = False):
+    # Some datasets seem to have problems with `.pq` downloading, this forces
+    # openml to use the `.arff` files instead
+    # https://github.com/openml/openml-python/issues/1181#issuecomment-1321775563
+    openml.datasets.functions._get_dataset_parquet = lambda x: None
+
     dataset = openml.datasets.get_dataset(did)
     X, y, categorical_indicator, attribute_names = dataset.get_data(
         dataset_format="array", target=dataset.default_target_attribute
@@ -115,6 +120,7 @@ def load_openml_list(dids, random_state=None,
                 print(f'Too many classes')
                 continue
 
+        print(f"Fetched {ds}")
         datasets += [[entry['name'], X, y, categorical_feats, attribute_names, modifications]]
 
     return datasets, datalist
@@ -270,6 +276,7 @@ automlbenchmark_ids = [181,
  42734,
  42732,
  42746,
-#42742,  # Fails to load due to looking for a .pq file that has restricted access
+ 42742,  # Fails to load due to looking for a .pq file that has restricted access
  42769,
- 43072]
+#43072, # Takes forever .. too large
+]
