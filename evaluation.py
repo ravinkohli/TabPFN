@@ -169,4 +169,4 @@ if __name__ == "__main__":
             eval_positions=args.eval_positions,
             results=result)
 
-        result.df.to_csv(os.path.join(args.result_path, f"results_{args.methods[0]}_{data_file_suffix}.csv"), index=True)
+        result.df.to_csv(os.path.join(args.result_path, f"results_{method}_{data_file_suffix}.csv"), index=True)
