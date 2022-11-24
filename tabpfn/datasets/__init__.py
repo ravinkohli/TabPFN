@@ -270,6 +270,6 @@ automlbenchmark_ids = [181,
  42734,
  42732,
  42746,
- 42742,
+#42742,  # Fails to load due to looking for a .pq file that has restricted access
  42769,
  43072]
