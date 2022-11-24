@@ -13,13 +13,10 @@ import math
 import sklearn
 import os
 #from pytorch_tabnet.tab_model import TabNetClassifier, TabNetRegressor
-from sklearn import preprocessing
 from torch import nn
-from sklearn.metrics import make_scorer
 from sklearn.impute import SimpleImputer
 
 
-from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn import neighbors
 from sklearn.gaussian_process import GaussianProcessClassifier
 from sklearn.gaussian_process.kernels import RBF
