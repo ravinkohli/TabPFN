@@ -3,21 +3,18 @@ from __future__ import annotations
 import time
 import os
 from pathlib import Path
-from contextlib import nullcontext
 
 
-from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
+from sklearn.model_selection import train_test_split
 
 import torch
-from tqdm import tqdm
 
 import random
 import numpy as np
 
 from torch import nn
 
-from torch.utils.checkpoint import checkpoint
-from tabpfn.utils import normalize_data, torch_nanmean, to_ranking_low_mem, remove_outliers
+from tabpfn.utils import torch_nanmean
 from tabpfn.scripts.tabular_baselines import get_scoring_string
 from tabpfn.scripts import tabular_metrics
 from tabpfn.scripts.transformer_prediction_interface import *
@@ -283,7 +280,11 @@ def generate_valid_split(X, y, bptt, eval_position, is_classification, split_id=
     :return:
     """
     if subsample:
-        X, y = subsample_data(X, y, seed=split_id)
+        try:
+            X, y = subsample_data(X, y, seed=split_id)
+        except Exception as e:
+            print(f"Failure in generating valid splits with error: {repr(e)}")
+            return None, None
 
     done, seed = False, 13
 

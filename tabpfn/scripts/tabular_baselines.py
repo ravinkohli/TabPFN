@@ -2,11 +2,8 @@ import sys
 tabpfn_path = '../../'
 sys.path.insert(0, tabpfn_path)
 
-import pandas
 from sklearn.model_selection import GridSearchCV
 from sklearn.model_selection import KFold
-from sklearn.model_selection import ParameterGrid
-from sklearn.pipeline import Pipeline
 import tempfile
 import random
 import math
@@ -16,7 +13,6 @@ import os
 from torch import nn
 from sklearn.impute import SimpleImputer
 
-
 from sklearn import neighbors
 from sklearn.gaussian_process import GaussianProcessClassifier
 from sklearn.gaussian_process.kernels import RBF
@@ -24,11 +20,8 @@ import numpy as np
 np.warnings.filterwarnings('ignore', category=np.VisibleDeprecationWarning) 
 
 import torch
-import itertools
 from tabpfn.scripts import tabular_metrics
 import pandas as pd
-from tqdm import tqdm
-from tabpfn.utils import remove_outliers
 
 from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.model_selection import cross_val_score

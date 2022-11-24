@@ -5,6 +5,8 @@ import openml
 
 from tabpfn.constants import DEFAULT_SEED
 
+# TODO: Uncomment once issue with openml is resolved [here](https://github.com/openml/openml-python/issues/1181#issuecomment-1321775563)
+openml.datasets.functions._get_dataset_parquet = lambda x: None
 
 def get_openml_classification(did, max_samples, random_state=None, multiclass=True, shuffled=True, subsample_flag: bool = False):
     # Some datasets seem to have problems with `.pq` downloading, this forces
