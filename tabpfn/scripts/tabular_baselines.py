@@ -253,7 +253,7 @@ def transformer_metric(x, y, test_x, test_y, cat_features, metric_used, seed, ma
     return metric, pred, None
 
 
-def naiveatuoml_metric(x, y, test_x, test_y, cat_features, metric_used, seed, max_time=300):
+def naiveatuoml_metric(x, y, test_x, test_y, cat_features, metric_used, seed, max_time=300, max_hpo_iterations=None):
     from naiveautoml import NaiveAutoML
 
     x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y
@@ -261,13 +261,15 @@ def naiveatuoml_metric(x, y, test_x, test_y, cat_features, metric_used, seed, ma
                                              , cat_features=cat_features
                                              , impute=False
                                              , standardize=False)
-    MAX_HPO_ITERATIONS = 10
+    # MAX_HPO_ITERATIONS = 10
     multiclass = False
     if is_classification(metric_used):
         multiclass = len(np.unique(y)) > 2
     
+    max_time = max_time if max_hpo_iterations is None else None
+    max_iters = max_hpo_iterations if max_hpo_iterations is not None else MAX_EVALS
     classifier = NaiveAutoML(
-        max_hpo_iterations=MAX_HPO_ITERATIONS,
+        max_hpo_iterations=max_iters,
         scoring=get_scoring_string(metric_used, multiclass=multiclass, usage="sklearn_cv"),
         timeout=max_time)
 
@@ -797,8 +799,6 @@ def well_tuned_simple_nets_metric(X_train, y_train, X_test, y_test, categorical_
         pipeline_update, search_space_updates, include_updates = get_updates_for_regularization_cocktails(
             categorical_indicator,
         )
-        print(search_space_updates)
-
 
 
         ############################################################################
@@ -817,7 +817,7 @@ def well_tuned_simple_nets_metric(X_train, y_train, X_test, y_test, categorical_
             resampling_strategy_args=resampling_strategy_args,
             ensemble_size=1,
             ensemble_nbest=1,
-            max_models_on_disc=10,
+            max_models_on_disc=5,
             include_components=include_updates,
             search_space_updates=search_space_updates,
             seed=seed,

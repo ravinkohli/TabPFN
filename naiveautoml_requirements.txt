@@ -15,7 +15,6 @@ idna==3.4
 joblib==1.2.0
 kiwisolver==1.4.4
 liac-arff==2.5.0
-matplotlib==3.6.2
 minio==7.1.12
 naiveautoml==0.0.11
 networkx==2.8.8
