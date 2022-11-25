@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 import warnings 
-
+warnings.filterwarnings("ignore", category=FutureWarning)
 import os
 
 import torch

@@ -712,6 +712,10 @@ METHODS = {
     ),
     # autogluon
     "autogluon": clf_dict["autogluon"],
+    # naiveautoml
+    "naiveautoml": clf_dict["naiveautoml"],
+    # autopytorch
+    "autopytorch": clf_dict["cocktail"],
     # autosklearn
     "autosklearn": clf_dict["autosklearn"],
     "autosklearn2": clf_dict["autosklearn2"],
