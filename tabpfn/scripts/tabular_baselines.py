@@ -70,13 +70,13 @@ def get_scoring_string(metric_used, multiclass=True, usage="sklearn_cv"):
         if usage == 'sklearn_cv':
             return 'roc_auc_ovo'
         elif usage == 'autogluon':
-            #return 'log_loss' # Autogluon crashes when using 'roc_auc' with some datasets usning logloss gives better scores;
+            return 'log_loss' # Autogluon crashes when using 'roc_auc' with some datasets usning logloss gives better scores;
                               # We might be able to fix this, but doesn't work out of box.
                               # File bug report? Error happens with dataset robert and fabert
-            if multiclass:
-                return 'roc_auc_ovo_macro'
-            else:
-                return 'roc_auc'
+            # if multiclass:
+            #     return 'roc_auc_ovo_macro'
+            # else:
+            #     return 'roc_auc'
         elif usage == 'tabnet':
             return 'logloss' if multiclass else 'auc'
         elif usage == 'autosklearn':
