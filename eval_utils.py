@@ -130,7 +130,7 @@ def get_executer_params(timeout: float, partition: str, gpu: bool = False, array
     if gpu:
         return {'timeout_min': int(timeout), 'slurm_partition': partition, 'slurm_tasks_per_node': 1, 'slurm_gres': "gpu:1"} # , "slurm_array_parallelism": array_parallelism}
     else:
-        return {'time': int(timeout), 'partition': partition, 'mem_per_cpu': 6000, 'nodes': 1, 'cpus_per_task': 1, 'ntasks_per_node': 1} #, 'array_parallelism': array_parallelism}
+        return {'time': int(timeout), 'partition': partition, 'mem_per_cpu': 12000, 'nodes': 1, 'cpus_per_task': 1, 'ntasks_per_node': 1} #, 'array_parallelism': array_parallelism}
 
 
 def get_executer(partition: str, log_folder: str, array_parallelism=5, gpu: bool=False, total_job_time_secs: float = 3600):

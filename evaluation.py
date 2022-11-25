@@ -4,6 +4,7 @@ from typing import Any, Dict, List
 import warnings 
 warnings.filterwarnings("ignore", category=FutureWarning)
 import os
+from copy import deepcopy
 
 import torch
 
@@ -99,63 +100,73 @@ if __name__ == "__main__":
     else:
         all_datasets = Dataset.fetch(args.datasets, only=filter_f, subsample_flag=args.subsample)
 
-    print("Loaded all datasets")
+    data_file_suffix = None
+    if args.datasets is None:
+        data_file_suffix = 'test_valid'
+    elif isinstance(args.datasets, str):
+        data_file_suffix = args.datasets
+    elif isinstance(args.datasets, (int, list)):
+        data_file_suffix = "custom_dids"+str(args.datasets)
 
+    if args.subsample:
+        data_file_suffix += "_subsample"
     log_folder = os.path.join(args.result_path, "log_test/")
 
-    if args.ensemble:
-        # assumes that args.methods passed provides baseline methods to combine with 1 tabpfn classifier
-        # can be done locally.
-        if args.slurm:
-            print("Running ensemble on slurm")
-            slurm_executer = get_executer(
-                partition=args.partition,
-                log_folder=log_folder,
-                total_job_time_secs=args.slurm_job_time,
-                gpu=args.gpu
-                )
-            job = slurm_executer.submit(do_evaluations_ensemble, args, all_datasets)
-            print(f"Started job with job_id: {job.job_id}")
-            result = job.result()
-        else:
-            result = do_evaluations_ensemble(args, all_datasets)
-
-    else:
-        if args.slurm:
-            if args.parallel:
-                print("Doing parallel evaluations on Slurm")
-                # runs each split, method on "args.chunk_size" datasets as paralle jobs. 
-                jobs = do_evaluations_parallel(args, all_datasets, log_folder=log_folder)
-                for experiment_key, chunked_job in jobs.items():
-                    for i, single_job in enumerate(chunked_job):
-                        print(f"Running chunk: {i} for {experiment_key} with job_id: {single_job.job_id}")
-                result = post_process_chunks_result(args.chunk_size, result=jobs)
-            else:
-                # submits only 1 job with all methods and datasets and splits
-                # should only be used for small experiments or collecting results. 
-                # Max time hardcoded to 1 hr.
-                assert not args.overwrite, f"Passed 'overwrite' flag. For running method on new splits please use parallel execution"
-                if not args.fetch_only:
-                    warnings.warn(f"Not passed 'fetch_only' flag. For running method on new splits please use parallel execution")
+    all_methods = deepcopy(args.methods)
+    for method in all_methods:
+        args.methods = [method]
+        if args.ensemble:
+            # assumes that args.methods passed provides baseline methods to combine with 1 tabpfn classifier
+            # can be done locally.
+            if args.slurm:
+                print("Running ensemble on slurm")
                 slurm_executer = get_executer(
                     partition=args.partition,
                     log_folder=log_folder,
-                    total_job_time_secs=args.slurm_job_time,  # 1 hr to collect the results
+                    total_job_time_secs=args.slurm_job_time,
                     gpu=args.gpu
                     )
-                job = slurm_executer.submit(do_evaluations, args, all_datasets)
+                job = slurm_executer.submit(do_evaluations_ensemble, args, all_datasets)
                 print(f"Started job with job_id: {job.job_id}")
                 result = job.result()
+            else:
+                result = do_evaluations_ensemble(args, all_datasets)
 
         else:
-            # running locally
-            result = do_evaluations(args, all_datasets)
+            if args.slurm:
+                if args.parallel:
+                    # runs each split, method on "args.chunk_size" datasets as paralle jobs. 
+                    jobs = do_evaluations_parallel(args, all_datasets, log_folder=log_folder)
+                    for experiment_key, chunked_job in jobs.items():
+                        for i, single_job in enumerate(chunked_job):
+                            print(f"Running chunk: {i} for {experiment_key} with job_id: {single_job.job_id}")
+                    result = post_process_chunks_result(args.chunk_size, result=jobs)
+                else:
+                    # submits only 1 job with all methods and datasets and splits
+                    # should only be used for small experiments or collecting results. 
+                    # Max time hardcoded to 1 hr.
+                    assert not args.overwrite, f"Passed 'overwrite' flag. For running method on new splits please use parallel execution"
+                    if not args.fetch_only:
+                        warnings.warn(f"Not passed 'fetch_only' flag. For running method on new splits please use parallel execution")
+                    slurm_executer = get_executer(
+                        partition=args.partition,
+                        log_folder=log_folder,
+                        total_job_time_secs=args.slurm_job_time,  # 1 hr to collect the results
+                        gpu=args.gpu
+                        )
+                    job = slurm_executer.submit(do_evaluations, args, all_datasets)
+                    print(f"Started job with job_id: {job.job_id}")
+                    result = job.result()
 
-    # Calculate metrics for results
-    result = calculate_metrics(
-        datasets=all_datasets,
-        recorded_metrics=args.recorded_metrics,
-        eval_positions=args.eval_positions,
-        results=result)
+            else:
+                # running locally
+                result = do_evaluations(args, all_datasets)
 
-    result.df.to_csv(os.path.join(args.result_path, "results.csv"), index=True)
+        # Calculate metrics for results
+        result = calculate_metrics(
+            datasets=all_datasets,
+            recorded_metrics=args.recorded_metrics,
+            eval_positions=args.eval_positions,
+            results=result)
+
+        result.df.to_csv(os.path.join(args.result_path, f"results_{args.methods[0]}_{data_file_suffix}.csv"), index=True)
