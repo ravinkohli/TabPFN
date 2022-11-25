@@ -714,6 +714,7 @@ METHODS = {
     "autogluon": clf_dict["autogluon"],
     # naiveautoml
     "naiveautoml": clf_dict["naiveautoml"],
+    "naiveautoml_iter_10": partial(clf_dict["naiveautoml"], max_hpo_iterations=10, max_time=None),
     # autopytorch
     "autopytorch": clf_dict["cocktail"],
     # autosklearn
@@ -726,7 +727,7 @@ METHODS = {
     "catboost": clf_dict["catboost"],
     "catboost_default": partial(clf_dict["catboost"], no_tune={}),
     "catboost_gpu": partial(clf_dict["catboost"], gpu_id=0),
-    "catboost_default_gpu": partial(clf_dict["catboost"], no_tune={}, gpu_id=0),
+    "catboost_default_gpu": partial(clf_dict["catboost"], no_tune={}, gpu_id=1),
     # xgb
     "xgb": clf_dict["xgb"],
     "xgb_onehot": partial(clf_dict["xgb"], preprocess="onehot"),
