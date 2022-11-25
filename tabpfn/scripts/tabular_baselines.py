@@ -6,21 +6,17 @@ import pandas
 from sklearn.model_selection import GridSearchCV
 from sklearn.model_selection import KFold
 from sklearn.model_selection import ParameterGrid
-
+from sklearn.pipeline import Pipeline
 import tempfile
 import random
 import math
 import sklearn
 import os
 #from pytorch_tabnet.tab_model import TabNetClassifier, TabNetRegressor
-from sklearn import preprocessing
 from torch import nn
-from sklearn.metrics import make_scorer
 from sklearn.impute import SimpleImputer
 
 
-from sklearn.base import BaseEstimator, ClassifierMixin
-import xgboost as xgb
 from sklearn import neighbors
 from sklearn.gaussian_process import GaussianProcessClassifier
 from sklearn.gaussian_process.kernels import RBF
@@ -260,14 +256,17 @@ def transformer_metric(x, y, test_x, test_y, cat_features, metric_used, seed, ma
 def naiveatuoml_metric(x, y, test_x, test_y, cat_features, metric_used, seed, max_time=300):
     from naiveautoml import NaiveAutoML
 
+    x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y
+                                             , one_hot=False
+                                             , cat_features=cat_features
+                                             , impute=False
+                                             , standardize=False)
     MAX_HPO_ITERATIONS = 10
     multiclass = False
     if is_classification(metric_used):
         multiclass = len(np.unique(y)) > 2
     
-
-    if classifier is None:
-      classifier = NaiveAutoML(
+    classifier = NaiveAutoML(
         max_hpo_iterations=MAX_HPO_ITERATIONS,
         scoring=get_scoring_string(metric_used, multiclass=multiclass, usage="sklearn_cv"),
         timeout=max_time)
