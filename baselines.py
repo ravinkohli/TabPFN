@@ -69,13 +69,14 @@ def preprocess_impute(x, y, test_x, test_y, impute, one_hot, standardize, cat_fe
 
     return x_transformed, y_transformed, test_x_transformed, test_y_transformed
 
-def logistic_metric(x, y, test_x, test_y, cat_features, numerical_features, metric_used, seed, max_time=300, no_tune=None):
-    x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y
-                                             , one_hot=True, impute=True, standardize=True
-                                             , cat_features=cat_features, numerical_features=numerical_features)
+def logistic_metric(x, y, test_x, test_y, cat_features, numerical_features, metric_used, seed, max_time=300, no_tune=None, preprocess=True):
+    if preprocess:
+        x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y
+                                                , one_hot=True, impute=True, standardize=True
+                                                , cat_features=cat_features, numerical_features=numerical_features)
 
     def clf_(**params):
-        return LogisticRegression(n_jobs=MULTITHREAD, **params)
+        return LogisticRegression(n_jobs=MULTITHREAD, random_state=seed, **params)
 
     return eval_complete_f(x, y, test_x, test_y, 'logistic', clf_,
                            metric_used=metric_used,
@@ -87,10 +88,11 @@ def logistic_metric(x, y, test_x, test_y, cat_features, numerical_features, metr
 ## Random Forest
 # Search space from
 # https://www.kaggle.com/code/emanueleamcappella/random-forest-hyperparameters-tuning/notebook
-def random_forest_metric(x, y, test_x, test_y, cat_features, numerical_features, metric_used, seed, max_time=300, no_tune={}):
+def random_forest_metric(x, y, test_x, test_y, cat_features, numerical_features, metric_used, seed, max_time=300, no_tune={}, preprocess=True):
     from sklearn.ensemble import RandomForestClassifier
 
-    x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y,
+    if preprocess:
+        x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y,
                                              one_hot=True, impute=True, standardize=False,
                                              cat_features=cat_features, numerical_features=numerical_features)
     def clf_(**params):
@@ -104,14 +106,15 @@ def random_forest_metric(x, y, test_x, test_y, cat_features, numerical_features,
 
 ## Gradient Boosting
 param_grid_hyperopt['decision_tree'] = {}
-def decision_tree_metric(x, y, test_x, test_y, cat_features, numerical_features, metric_used, seed, max_time=300, no_tune=None):
+def decision_tree_metric(x, y, test_x, test_y, cat_features, numerical_features, metric_used, seed, max_time=300, no_tune=None, preprocess=True):
     from sklearn import tree
-    x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y,
+    if preprocess:
+        x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y,
                                              one_hot=True, impute=True, standardize=False,
                                              cat_features=cat_features, numerical_features=numerical_features)
 
     def clf_(**params):
-        return tree.DecisionTreeClassifier(**params)
+        return tree.DecisionTreeClassifier(random_state=seed, **params)
 
     return eval_complete_f(x, y, test_x, test_y, 'decision_tree', clf_,
                            metric_used=metric_used,
@@ -121,15 +124,16 @@ def decision_tree_metric(x, y, test_x, test_y, cat_features, numerical_features,
 
 ## Gradient Boosting
 param_grid_hyperopt['hist_gradient_boosting'] = {}
-def hist_gradient_boosting_metric(x, y, test_x, test_y, cat_features, numerical_features, metric_used, seed, max_time=300, no_tune=None):
+def hist_gradient_boosting_metric(x, y, test_x, test_y, cat_features, numerical_features, metric_used, seed, max_time=300, no_tune=None, preprocess=True):
     from sklearn.experimental import enable_hist_gradient_boosting
     from sklearn import ensemble
-    x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y,
+    if preprocess:
+        x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y,
                                              one_hot=True, impute=False, standardize=False,
                                              cat_features=cat_features, numerical_features=numerical_features)
 
     def clf_(**params):
-        return ensemble.HistGradientBoostingClassifier(**params)
+        return ensemble.HistGradientBoostingClassifier(random_state=seed, **params)
 
     return eval_complete_f(x, y, test_x, test_y, 'hist_gradient_boosting', clf_,
                            metric_used=metric_used,
@@ -140,14 +144,15 @@ def hist_gradient_boosting_metric(x, y, test_x, test_y, cat_features, numerical_
 
 ## mlp
 param_grid_hyperopt['mlp'] = {}
-def sklearn_mlp_metric(x, y, test_x, test_y, cat_features, numerical_features, metric_used, seed, max_time=300, no_tune=None):
+def sklearn_mlp_metric(x, y, test_x, test_y, cat_features, numerical_features, metric_used, seed, max_time=300, no_tune=None, preprocess=True):
     from sklearn import neural_network
-    x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y,
+    if preprocess:
+        x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y,
                                              one_hot=True, impute=True, standardize=True,
                                              cat_features=cat_features,
                                              numerical_features=numerical_features)
     def clf_(**params):
-        return neural_network.MLPClassifier(**params)
+        return neural_network.MLPClassifier(random_state=seed, **params)
 
     return eval_complete_f(x, y, test_x, test_y, 'mlp', clf_,
                            metric_used=metric_used,
