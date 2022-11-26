@@ -1061,6 +1061,7 @@ def eval_method_ensemble(
     verbose: bool = False,
     bptt: int = 2000,
     overwrite: bool = False,
+    subsample: bool = False
 ):
     """Evaluate a given method."""
     label = update_label(label, max_time, metric_used, append_metric)
