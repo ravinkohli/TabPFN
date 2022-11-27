@@ -34,6 +34,7 @@ lightgbm==3.2.1
 locket==0.2.1
 lockfile==0.12.2
 Markdown==3.3.4
+matplotlib==3.4.1
 minio==7.0.3
 msgpack==1.0.2
 networkx==2.5.1
@@ -41,6 +42,7 @@ numpy==1.21.2
 oauthlib==3.1.0
 opencv-python==4.5.1.48
 openml==0.12.2
+packaging==21.3
 pandas==1.5.2
 partd==1.2.0
 Pillow==8.2.0
@@ -70,7 +72,6 @@ Shapely==1.7.1
 six==1.15.0
 smac==0.13.1
 sortedcontainers==2.3.0
--e git+ssh://git@github.com/automl/submitit.git@fc6e3ed569b5c1fdc111f05467d59f3b1e3efe54#egg=submitit
 tabulate==0.8.9
 tblib==1.7.0
 tensorboard==2.5.0
@@ -79,7 +80,8 @@ tensorboard-plugin-wit==1.8.0
 threadpoolctl==2.1.0
 tifffile==2021.4.8
 toolz==0.11.1
-torch==1.9.0
+torch==1.8.1
+torchmetrics==0.10.3
 torchvision==0.9.1
 tornado==6.1
 tqdm==4.62.1

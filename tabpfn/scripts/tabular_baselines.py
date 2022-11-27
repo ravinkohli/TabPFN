@@ -1377,7 +1377,8 @@ def xgb_metric(x, y, test_x, test_y, cat_features, metric_used, seed, max_time=3
     # XGB handles missing values appropriately without imputation
     
     if gpu_id is not None:
-         gpu_params = {'tree_method':'gpu_hist', 'gpu_id':gpu_id}
+        print("Running on gpu")
+        gpu_params = {'tree_method':'gpu_hist', 'gpu_id':gpu_id}
     else:
         gpu_params = {}
     one_hot_encode = 'one_hot' in preprocess
