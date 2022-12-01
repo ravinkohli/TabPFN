@@ -91,3 +91,6 @@ Werkzeug==1.0.1
 xgboost==1.4.0
 xmltodict==0.12.0
 zict==2.0.0
+
+
+python evaluation.py --methods autopytorch_master_default --result_path /work/dlclarge2/rkohli-results_tab-bench/master_trial --slurm --splits 1  --times 3600 --parallel --datasets 38             

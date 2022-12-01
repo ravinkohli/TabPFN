@@ -65,17 +65,17 @@ def post_process_chunks_result(
     for key in result:
         final_results[key] = []
         new_item = {}
-        sum_aggregate_metric = torch.tensor(0.0)
+        # sum_aggregate_metric = torch.tensor(0.0)
         for i, item in enumerate(result[key]):
             try:
                 individual_result = item.result()
-                sum_aggregate_metric += individual_result['sum_aggregate_metric']
+                # sum_aggregate_metric += individual_result['sum_aggregate_metric']
                 new_item = {**new_item, **individual_result}
             except Exception as e:
                 print(f"Failed for {key} with {repr(e)}")
    
         new_item.pop('sum_aggregate_metric', None)
-        new_item['mean_metric'] = sum_aggregate_metric / ((i+1)*chunk_size)
+        # new_item['mean_metric'] = sum_aggregate_metric / ((i+1)*chunk_size)
         final_results[key] = new_item
 
     return final_results
@@ -92,14 +92,17 @@ if __name__ == "__main__":
     # We ignore the flags datasets
     filter_f = lambda d: d.name != "flags"  # noqa: ignore
 
+    dataset = "custom"
     if args.datasets is None:
         valid_datasets = Dataset.fetch("cc_valid", only=filter_f, subsample_flag=args.subsample)
         test_datasets = Dataset.fetch("cc_test", only=filter_f, subsample_flag=args.subsample)
         all_datasets = valid_datasets + test_datasets
     else:
+        if isinstance(args.datasets, str):
+            dataset = args.datasets
         all_datasets = Dataset.fetch(args.datasets, only=filter_f, subsample_flag=args.subsample)
 
-    print("Loaded all datasets")
+    print(f"Loaded all datasets for: {dataset} total: {len(all_datasets)}")
 
     log_folder = os.path.join(args.result_path, "log_test/")
 
@@ -151,11 +154,10 @@ if __name__ == "__main__":
             # running locally
             result = do_evaluations(args, all_datasets)
 
-    # Calculate metrics for results
-    result = calculate_metrics(
+    result = Results.from_dict(
+        result,
         datasets=all_datasets,
-        recorded_metrics=args.recorded_metrics,
-        eval_positions=args.eval_positions,
-        results=result)
+        recorded_metrics=["score"],
+    )
 
-    result.df.to_csv(os.path.join(args.result_path, "results.csv"), index=True)
+    result.df.to_csv(os.path.join(args.result_path, f"results_{args.methods[0]}_{dataset}.csv"), index=True)

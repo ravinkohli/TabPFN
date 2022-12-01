@@ -22,7 +22,7 @@ import torch
 from matplotlib.lines import Line2D
 
 import tabpfn.scripts.tabular_baselines as tb
-from tabpfn.datasets import load_openml_list, open_cc_dids, open_cc_valid_dids, automlbenchmark_ids, grinzstjan_numerical_classification, grinzstjan_categorical_classification
+from tabpfn.datasets import load_openml_list, open_cc_dids, open_cc_valid_dids, automlbenchmark_ids, grinzstjan_numerical_classification, grinzstjan_categorical_classification, too_easy_dids, benchmark_dids, not_too_easy_dids
 from tabpfn.scripts.tabular_baselines import clf_dict
 from tabpfn.scripts.tabular_evaluation import check_file_exists, evaluate, get_scoring_string
 from tabpfn.scripts.tabular_metrics import (accuracy_metric, auc_metric,
@@ -60,6 +60,20 @@ PREDEFINED_DATASET_COLLECTIONS: dict[str, dict[str, Any]] = {
     },
     "grinzstjan": {
         "ids": grinzstjan_numerical_classification + grinzstjan_categorical_classification,
+    },
+    "too_easy":{
+        "ids": too_easy_dids["numerical"]
+    },
+    "benchmark":{
+        "ids": benchmark_dids["numerical"]
+    },
+    "not_too_easy":{
+        "ids": not_too_easy_dids["numerical"]
+    },
+    "remaining":{
+        # "ids":  [
+        # 38, 44, 151, 273, 293, 310, 350, 351, 354, 357, 720, 722, 725, 727, 728, 734, 735, 737, 761, 803, 816, 819, 821, 823, 833, 846, 847, 871, 976, 977, 979, 980, 993, 1000, 1002, 1018, 1019, 1021, 1037, 1039, 1040, 1053, 1056, 1069, 1111, 1112, 1114, 1116, 1119, 1120, 1241, 1242, 1461, 1486, 1489, 1507, 1558, 1590, 1597, 4134, 4154, 23517, 40536, 40666, 40701, 40713, 40900, 40910, 40983, 41138, 41146, 41147, 41150, 41156, 41160, 41161, 41162, 41228, 41434, 41946, 42192, 42193, 42206, 42252, 42256, 42343, 42395, 42397, 42477, 42733, 42742, 42757, 42758, 42759, 42769, 42773, 42774, 42775, 43072, 43489, 43551, 6, 28, 30, 32, 60, 183, 279, 300, 375, 390, 399, 1044, 1110, 1113, 1222, 1459, 1475, 1476, 1477, 1478, 1503, 1526, 1557, 4541, 40498, 40499, 40685, 40923, 41004, 41027, 41081, 41082, 41103, 41163, 41164, 41165, 41166, 41168, 41169, 41671, 41972, 42468, 42746]
+        "ids":  [44, 151, 293, 351, 354, 357, 720, 722, 725, 734, 735, 737, 761, 803, 816, 819, 821, 823, 833, 846, 847, 871, 976, 979, 993, 1053, 1119, 1120, 1241, 1242, 1461, 1486, 1489, 1507, 1590, 4134, 23517, 41146, 41147, 41150, 41162, 42206, 42343, 42395, 42477, 42742, 42769, 43489, 60, 279, 1044, 1110, 1113, 1222, 1476, 1477, 1478, 1503, 1526, 4541, 40685, 40923, 41163, 41164, 41166, 41168, 41169, 41671, 41972, 42468, 42746]
     }
 }
 
@@ -158,6 +172,7 @@ class Dataset:
     attribute_names: list[str]
     # Seems to be some things about how the dataset was constructed
     info: dict
+    id: int
     # Only 'multiclass' is known?
     task_type: str
 
@@ -263,6 +278,7 @@ class Dataset:
             self.categorical_columns,
             self.attribute_names,
             self.info,
+            self.id
         ]
 
 
@@ -325,7 +341,7 @@ class Results:
         eval_positions = sorted(_eval_positions)
 
         # Dataset names...
-        dataset_names = sorted([d.name for d in datasets])
+        dataset_ids = sorted([d.id for d in datasets])
 
         # We flatten out the fit_time and inference_time of best_config
         for (k, v), pos, dataset in product(d.items(), eval_positions, datasets):
@@ -366,7 +382,7 @@ class Results:
             metrics.append("time")
 
         columns = pd.MultiIndex.from_product(
-            [metrics, dataset_names],
+            [metrics, dataset_ids],
             names=["metric", "dataset"],
         )
 
@@ -383,11 +399,11 @@ class Results:
             opt_metric = match.group("metric")
             split = int(match.group("split"))
 
-            for dataset, metric, pos in product(dataset_names, metrics, eval_positions):
+            for dataset, metric, pos in product(datasets, metrics, eval_positions):
                 row = (method, opt_metric, time, int(pos), split)
-                col = (metric, dataset)
+                col = (metric, dataset.id)
 
-                value = v.get(f"{dataset}_{metric}_at_{pos}", np.nan)
+                value = v.get(f"{dataset.name}_{metric}_at_{pos}", np.nan)
 
                 df.loc[row, col] = value
 
@@ -717,6 +733,8 @@ METHODS = {
     "naiveautoml_iter_10": partial(clf_dict["naiveautoml"], max_hpo_iterations=10, max_time=None),
     # autopytorch
     "autopytorch": clf_dict["cocktail"],
+    "autopytorch_default": clf_dict["cocktail_default"],
+    "autopytorch_master_default": clf_dict["master_default"],
     # autosklearn
     "autosklearn": clf_dict["autosklearn"],
     "autosklearn2": clf_dict["autosklearn2"],
@@ -1137,7 +1155,7 @@ def arguments() -> argparse.Namespace:
         type=str,
         choices=METRICS,
         help="Metrics to optimize for (if possible)",
-        default=["roc"],
+        default=["acc"],
     )
     parser.add_argument(
         "--recorded_metrics",

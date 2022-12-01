@@ -2,6 +2,8 @@ import numpy as np
 import os
 import time
 import pandas as pd
+import random
+import tempfile
 
 
 def get_updates_for_regularization_cocktails(
@@ -309,7 +311,8 @@ def well_tuned_simple_nets_metric(X_train, y_train, X_test, y_test, categorical_
 
         start_time = time.time()
 
-        X_train, y_train, X_test, y_test = X_train.cpu().numpy(), y_train.cpu().long().numpy(), X_test.cpu().numpy(), y_test.cpu().long().numpy()
+        if hasattr(X_train, 'cpu'):
+            X_train, y_train, X_test, y_test = X_train.cpu().numpy(), y_train.cpu().long().numpy(), X_test.cpu().numpy(), y_test.cpu().long().numpy()
 
         def safe_int(x):
             assert np.all(x.astype('int64') == x) or np.any(x != x), np.unique(x) # second condition for ignoring nans
@@ -324,7 +327,7 @@ def well_tuned_simple_nets_metric(X_train, y_train, X_test, y_test, categorical_
         if isinstance(y_test[1], bool):
             y_test = y_test.astype('bool')
 
-        number_of_configurations_limit = 840 # hard coded in the paper
+        number_of_configurations_limit = 400 # for run on gaels datasets
         epochs = 105
         func_eval_time = min(1000, max_time/2)
 
@@ -445,7 +448,6 @@ def well_tuned_simple_nets_metric(X_train, y_train, X_test, y_test, categorical_
         y_train = dataset.train_tensors[1]
         X_test = dataset.test_tensors[0]
         y_test = dataset.test_tensors[1]
-
 
         test_predictions = fitted_pipeline.predict(X_test)
 

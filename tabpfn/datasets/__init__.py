@@ -4,46 +4,23 @@ import numpy as np
 import openml
 
 from tabpfn.constants import DEFAULT_SEED
-
+from tabpfn.datasets.preprocessing_utils import preprocessing
 
 def get_openml_classification(did, max_samples, random_state=None, multiclass=True, shuffled=True, subsample_flag: bool = False):
     # Some datasets seem to have problems with `.pq` downloading, this forces
     # openml to use the `.arff` files instead
     # https://github.com/openml/openml-python/issues/1181#issuecomment-1321775563
-    openml.datasets.functions._get_dataset_parquet = lambda x: None
+    openml.datasets.functions._get_dataset_parquet = lambda x, **args: None
 
     dataset = openml.datasets.get_dataset(did)
     X, y, categorical_indicator, attribute_names = dataset.get_data(
-        dataset_format="array", target=dataset.default_target_attribute
+        target=dataset.default_target_attribute
     )
 
-    if not multiclass:
-        X = X[y < 2]
-        y = y[y < 2]
-
-    if multiclass and not shuffled:
-        raise NotImplementedError("This combination of multiclass and shuffling isn't implemented")
-
-    if not isinstance(X, np.ndarray) or not isinstance(y, np.ndarray):
-        print('Not a NP Array, skipping')
-        return None, None, None, None
-
-    if not shuffled:
-        sort = np.argsort(y) if y.mean() < 0.5 else np.argsort(-y)
-        pos = int(y.sum()) if y.mean() < 0.5 else int((1 - y).sum())
-        X, y = X[sort][-pos * 2:], y[sort][-pos * 2:]
-        y = torch.tensor(y).reshape(2, -1).transpose(0, 1).reshape(-1).flip([0]).float()
-        X = torch.tensor(X).reshape(2, -1, X.shape[1]).transpose(0, 1).reshape(-1, X.shape[1]).flip([0]).float()
-    else:
-        order = np.arange(y.shape[0])
-        random_state = random_state if random_state is not None else np.random.RandomState(DEFAULT_SEED)
-        random_state.shuffle(order)
-        X, y = torch.tensor(X[order]), torch.tensor(y[order])
-
-    # If we are going to be subsampling, we need to make sure this gets skipped
-    if max_samples and not subsample_flag:
-        X, y = X[:max_samples], y[:max_samples]
-
+    X, y, categorical_indicator, num_high_cardinality, num_columns_missing, num_rows_missing, \
+        num_categorical_columns, n_pseudo_categorical, original_n_samples, original_n_features = \
+            preprocessing(X, y, categorical_indicator, categorical=False,
+                        regression=False, transformation=None)
     # If subsampling, these column parameters will be modified
     return X, y, list(np.where(categorical_indicator)[0]), attribute_names
 
@@ -95,33 +72,8 @@ def load_openml_list(dids, random_state=None,
             continue
 
 
-        if not subsample_flag and X.shape[1] > num_feats:
-            if return_capped:
-                X = X[:, 0:num_feats]
-                categorical_feats = [c for c in categorical_feats if c < num_feats]
-                modifications['feats_capped'] = True
-            else:
-                print('Too many features')
-                continue
-
-        if not subsample_flag and X.shape[0] == max_samples:
-            modifications['samples_capped'] = True
-
-        if X.shape[0] < min_samples:
-            print(f'Too few samples left')
-            continue
-
-        if not subsample_flag and len(np.unique(y)) > max_num_classes:
-            if return_capped:
-                X = X[y < np.unique(y)[10]]
-                y = y[y < np.unique(y)[10]]
-                modifications['classes_capped'] = True
-            else:
-                print(f'Too many classes')
-                continue
-
         print(f"Fetched {ds}")
-        datasets += [[entry['name'], X, y, categorical_feats, attribute_names, modifications]]
+        datasets += [[entry['name'], X, y, categorical_feats, attribute_names, modifications, int(entry.did)]]
 
     return datasets, datalist
 
@@ -280,3 +232,28 @@ automlbenchmark_ids = [181,
  42769,
 #43072, # Takes forever .. too large
 ]
+
+benchmark_dids = dict(
+    numerical = [
+        44089, 44090, 44091, 44120, 44121, 44122, 44123, 44124, 44125, 44126, 44127, 44128, 44129, 44130, 44131
+    ],
+    categorical=[
+        44156, 44157, 44159, 44160, 44161, 44162, 44186
+    ]
+)
+too_easy_dids = dict(
+    numerical = [
+        44, 152, 153, 246, 251, 256, 257, 258, 267, 269, 351, 357, 720, 725, 734, 735, 737, 761, 803, 816, 819, 823, 833, 846, 847, 871, 976, 979, 1053, 1119, 1181, 1205, 1212, 1216, 1218, 1219, 1240, 1241, 1242, 1486, 1507, 1590, 4134, 23517, 41146, 41147, 41162, 42206, 42343, 42395, 42435, 42477, 42742, 42750, 43489, 60, 150, 159, 160, 180, #]
+        182, 250, 252, 254, 261, 266, 271, 279, 554, 1110, 1113, 1183, 1185, 1209, 1214, 1222, 1226, 1351, 1352, 1353, 1354, 1355, 1356, 1357, 1358, 1359, 1360, 1361, 1362, 1363, 1364, 1365, 1366, 1368, 1393, 1394, 1395, 1476, 1477, 1478, 1503, 1526, 1596, 4541, 40685, 40923, 40996, 40997, 41000, 41002, 41039, 41163, 41164, 41166, 41168, 41169, 41671, 41972, 41982, 41986, 41988, 41989, 42468, 42746
+         ],
+    categorical=[
+        4, 26, 154, 179, 274, 350, 720, 881, 923, 959, 981, 993, 1110, 1112, 1113, 1119, 1169, 1240, 1461, 1486, 1503, 1568, 1590, 4534, 4541, 40517, 40672, 40997, 40998, 41000, 41002, 41003, 41006, 41147, 41162, 41440, 41672, 42132, 42192, 42193, 42206, 42343, 42344, 42345, 42477, 42493, 42732, 42734, 42742, 42746, 42750, 43044, 43439, 43489, 43607, 43890, 43892, 43898, 43903, 43904, 43920, 43922, 43923, 43938
+        ]
+    )
+
+not_too_easy_dids = dict(
+    numerical = [
+        # 41081
+        6, 1037, 1039, 1040, 1044, 1557, 1558, 40983, 28, 30, 43551, 1056, 32, 38, 41004, 1069, 40498, 40499, 4154, 1597, 43072, 41027, 1111, 40536, 1112, 1114, 1116, 1120, 41082, 41103, 151, 41138, 183, 41150, 41156, 41160, 41161, 41165, 42192, 42193, 722, 727, 728, 40666, 42733, 40701, 42757, 42758, 42759, 40713, 41228, 42252, 42256, 273, 42769, 42773, 42774, 42775, 293, 300, 821, 310, 350, 354, 375, 390, 399, 42397, 1459, 1461, 1475, 40900, 40910, 1489, 977, 980, 41434, 41946, 993, 1000, 1002, 1018, 1019, 1021
+    ]
+)

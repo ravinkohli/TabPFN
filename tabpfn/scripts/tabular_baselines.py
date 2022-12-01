@@ -26,7 +26,9 @@ from tabpfn.scripts import tabular_metrics
 import pandas as pd
 from tqdm import tqdm
 from tabpfn.utils import remove_outliers
-from tabpfn.scripts.autopytorch_baselines import well_tuned_simple_nets_metric
+from tabpfn.scripts.autopytorch_cocktails_baseline import well_tuned_simple_nets_metric
+from tabpfn.scripts.for_autopytorch_default import well_tuned_simple_nets_metric_default
+from tabpfn.scripts.for_master_autopytorch_default import autopytorch_master_default_metric
 from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.model_selection import cross_val_score
 import time
@@ -143,6 +145,8 @@ def get_scoring_string(metric_used, multiclass=True, usage="sklearn_cv"):
             return 'MAE'
         else:
             return 'neg_mean_absolute_error'
+    elif metric_used.__name__ == tabular_metrics.accuracy_metric.__name__:
+        return 'accuracy'
     else:
         raise Exception('No scoring string found for metric')
 
@@ -892,4 +896,6 @@ clf_dict = {'gp': gp_metric
              , 'autosklearn2': autosklearn2_metric
             , 'autogluon': autogluon_metric,
             'cocktail': well_tuned_simple_nets_metric,
+            'cocktail_default': well_tuned_simple_nets_metric_default,
+            "master_default": autopytorch_master_default_metric,
             "naiveautoml": naiveatuoml_metric}
