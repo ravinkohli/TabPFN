@@ -2,7 +2,8 @@ import numpy as np
 import os
 import time
 import pandas as pd
-
+import random
+import tempfile
 
 def get_updates_for_regularization_cocktails(
     categorical_indicator: np.ndarray):
@@ -19,25 +20,14 @@ def get_updates_for_regularization_cocktails(
             Lastly include updates, which can be used to include different features.
     """
     from autoPyTorch.utils.hyperparameter_search_space_update import HyperparameterSearchSpaceUpdates
+    from autoPyTorch.constants import MIN_CATEGORIES_FOR_EMBEDDING_MAX
 
     include_updates = dict()
-    include_updates['network_embedding'] = ['NoEmbedding']
     include_updates['network_init'] = ['NoInit']
 
     has_cat_features = any(categorical_indicator)
     has_numerical_features = not all(categorical_indicator)
 
-    def str2bool(v):
-        if isinstance(v, bool):
-            return [v, ]
-        if v.lower() in ('yes', 'true', 't', 'y', '1'):
-            return [True, ]
-        elif v.lower() in ('no', 'false', 'f', 'n', '0'):
-            return [False, ]
-        elif v.lower() == 'conditional':
-            return [True, False]
-        else:
-            raise ValueError('No valid value given.')
     search_space_updates = HyperparameterSearchSpaceUpdates()
 
     # architecture head
@@ -130,6 +120,18 @@ def get_updates_for_regularization_cocktails(
         default_value=1e-3,
     )
     search_space_updates.append(
+        node_name='optimizer',
+        hyperparameter='AdamWOptimizer:beta1',
+        value_range=[0.9],
+        default_value=0.9,
+    )
+    search_space_updates.append(
+        node_name='optimizer',
+        hyperparameter='AdamWOptimizer:beta2',
+        value_range=[0.999],
+        default_value=0.999,
+    )
+    search_space_updates.append(
         node_name='data_loader',
         hyperparameter='batch_size',
         value_range=[128],
@@ -160,32 +162,12 @@ def get_updates_for_regularization_cocktails(
         )
 
     if has_cat_features:
-        print('has cat features')
         search_space_updates.append(
-            node_name='imputer',
-            hyperparameter='categorical_strategy',
-            value_range=['constant_!missing!'],
-            default_value='constant_!missing!',
+            node_name='column_splitter',
+            hyperparameter='min_categories_for_embedding',
+            value_range=(1, MIN_CATEGORIES_FOR_EMBEDDING_MAX),
+            default_value=3
         )
-        search_space_updates.append(
-            node_name='encoder',
-            hyperparameter='__choice__',
-            value_range=['OneHotEncoder'],
-            default_value='OneHotEncoder',
-        )
-
-    search_space_updates.append(
-        node_name='optimizer',
-        hyperparameter='AdamWOptimizer:beta1',
-        value_range=[0.9],
-        default_value=0.9,
-    )
-    search_space_updates.append(
-        node_name='optimizer',
-        hyperparameter='AdamWOptimizer:beta2',
-        value_range=[0.999],
-        default_value=0.999,
-    )
 
     # if the cash formulation of the cocktail is not activated,
     # otherwise the methods activation will be chosen by the SMBO optimizer.
@@ -194,96 +176,13 @@ def get_updates_for_regularization_cocktails(
     # No early stopping and train on gpu
     pipeline_update = {
         'early_stopping': -1,
-        'min_epochs': 105,
-        'epochs': 105,
         "device": 'cpu',
     }
 
     return pipeline_update, search_space_updates, include_updates
 
-def get_smac_object(
-    scenario_dict,
-    seed: int,
-    ta,
-    ta_kwargs,
-    n_jobs: int,
-    initial_budget: int,
-    max_budget: int,
-    dask_client,
-):
-    """
-    This function returns an SMAC object that is gonna be used as
-    optimizer of pipelines.
-    Args:
-        scenario_dict (typing.Dict[str, typing.Any]): constrain on how to run
-            the jobs.
-        seed (int): to make the job deterministic.
-        ta (typing.Callable): the function to be intensified by smac.
-        ta_kwargs (typing.Dict[str, typing.Any]): Arguments to the above ta.
-        n_jobs (int): Amount of cores to use for this task.
-        initial_budget (int):
-            The initial budget for a configuration.
-        max_budget (int):
-            The maximal budget for a configuration.
-        dask_client (dask.distributed.Client): User provided scheduler.
-    Returns:
-        (SMAC4AC): sequential model algorithm configuration object
-    """
-    from smac.intensification.simple_intensifier import SimpleIntensifier
-    from smac.runhistory.runhistory2epm import RunHistory2EPM4LogCost
-    from smac.scenario.scenario import Scenario
-    from smac.facade.smac_ac_facade import SMAC4AC
-    # multi-fidelity is disabled, that is why initial_budget and max_budget
-    # are not used.
-    rh2EPM = RunHistory2EPM4LogCost
 
-    return SMAC4AC(
-        scenario=Scenario(scenario_dict),
-        rng=seed,
-        runhistory2epm=rh2EPM,
-        tae_runner=ta,
-        tae_runner_kwargs=ta_kwargs,
-        initial_configurations=None,
-        run_id=seed,
-        intensifier=SimpleIntensifier,
-        dask_client=dask_client,
-        n_jobs=n_jobs,
-    )
-
-
-def get_incumbent_results(
-    run_history_file: str,
-    search_space
-):
-    """
-    Get the incumbent configuration and performance from the previous run HPO
-    search with AutoPytorch.
-    Args:
-        run_history_file (str):
-            The path where the AutoPyTorch search data is located.
-        search_space (ConfigSpace.ConfigurationSpace):
-            The ConfigurationSpace that was previously used for the HPO
-            search space.
-    Returns:
-        config, incumbent_run_value (Tuple[ConfigSpace.Configuration, float]):
-            The incumbent configuration found from HPO search and the validation
-            performance it achieved.
-    """
-    from smac.runhistory.runhistory import RunHistory
-    run_history = RunHistory()
-    run_history.load_json(
-        run_history_file,
-        search_space,
-    )
-
-    run_history_data = run_history.data
-    sorted_runvalue_by_cost = sorted(run_history_data.items(), key=lambda item: item[1].cost)
-    incumbent_run_key, incumbent_run_value = sorted_runvalue_by_cost[0]
-    config = run_history.ids_config[incumbent_run_key.config_id]
-    return config, incumbent_run_value
-
-
-def well_tuned_simple_nets_metric(X_train, y_train, X_test, y_test, categorical_indicator, metric_used, seed, max_time=300, nr_workers=1):
+def well_tuned_simple_nets_metric_embed(X_train, y_train, X_test, y_test, categorical_indicator, metric_used, seed, max_time=300, nr_workers=1, **kwargs):
     """Install:
     git clone https://github.com/automl/Auto-PyTorch.git
     cd Auto-PyTorch
@@ -303,13 +202,15 @@ def well_tuned_simple_nets_metric(X_train, y_train, X_test, y_test, categorical_
         from autoPyTorch.datasets.tabular_dataset import TabularDataset
         from autoPyTorch import metrics
         # append random folder to temp_dir to avoid collisions
+        # temp_dir = "/work/dlclarge1/rkohli-run-autopytorch/embed_roc_not_eval_debug/"
         rand_int = str(random.randint(1,1000))
         temp_dir = os.path.join(temp_dir, 'temp_'+rand_int)
         out_dir = os.path.join(temp_dir, 'out_'+rand_int)
 
         start_time = time.time()
 
-        X_train, y_train, X_test, y_test = X_train.cpu().numpy(), y_train.cpu().long().numpy(), X_test.cpu().numpy(), y_test.cpu().long().numpy()
+        if hasattr(X_train, 'cpu'):
+            X_train, y_train, X_test, y_test = X_train.cpu().numpy(), y_train.cpu().long().numpy(), X_test.cpu().numpy(), y_test.cpu().long().numpy()
 
         def safe_int(x):
             assert np.all(x.astype('int64') == x) or np.any(x != x), np.unique(x) # second condition for ignoring nans
@@ -324,7 +225,7 @@ def well_tuned_simple_nets_metric(X_train, y_train, X_test, y_test, categorical_
         if isinstance(y_test[1], bool):
             y_test = y_test.astype('bool')
 
-        number_of_configurations_limit = 840 # hard coded in the paper
+        # number_of_configurations_limit = 400 # for run on gaels datasets
         epochs = 105
         func_eval_time = min(1000, max_time/2)
 
@@ -341,9 +242,10 @@ def well_tuned_simple_nets_metric(X_train, y_train, X_test, y_test, categorical_
         # Build and fit a classifier
         # ==========================
         # if we use HPO, we can use multiple workers in parallel
-        if number_of_configurations_limit == 0:
-            nr_workers = 1
+        # if number_of_configurations_limit == 0:
+        #     nr_workers = 1
 
+        print(f"Running with: {nr_workers}")
         api = TabularClassificationTask(
             temporary_directory=temp_dir,
             output_directory=out_dir,
@@ -370,23 +272,28 @@ def well_tuned_simple_nets_metric(X_train, y_train, X_test, y_test, categorical_
         print('temp_dir',temp_dir)
         # print(max_time, min(func_eval_time, max_time, number_of_configurations_limit))
 
-        if number_of_configurations_limit != 0:
-            api.search(
-                X_train=X_train.copy(),
-                y_train=y_train.copy(),
-                X_test=X_test.copy(),
-                y_test=y_test.copy(),
-                optimize_metric='balanced_accuracy',
-                total_walltime_limit=max_time,
-                memory_limit=12000,
-                func_eval_time_limit_secs=min(func_eval_time, max_time),
-                enable_traditional_pipeline=False,
-                get_smac_object_callback=get_smac_object,
-                smac_scenario_args={
-                    'runcount_limit': number_of_configurations_limit,
-                },
-            )
+        api.search(
+            X_train=X_train.copy(),
+            y_train=y_train.copy(),
+            X_test=X_test.copy(),
+            y_test=y_test.copy(),
+            optimize_metric='roc_auc',
+            # optimize_metric='balanced_accuracy',
+            total_walltime_limit=max_time,
+            all_supported_metrics=False,
+            memory_limit=12000,
+            func_eval_time_limit_secs=min(func_eval_time, max_time),
+            enable_traditional_pipeline=False,
+            min_budget=epochs,
+            max_budget=epochs,
+            budget_type="epochs"
+            # smac_scenario_args={
+            #     'runcount_limit': number_of_configurations_limit,
+            # },
+        )
 
+        test_predictions = api.predict_proba(X_test=X_test)
+        print(test_predictions)
         ############################################################################
         # Refit on the best hp configuration
         # ==================================
@@ -410,26 +317,13 @@ def well_tuned_simple_nets_metric(X_train, y_train, X_test, y_test, categorical_
             resampling_strategy=NoResamplingStrategyTypes.no_resampling,
         )
         dataset.is_small_preprocess = False
-        print(f"Fitting pipeline with {epochs} epochs")
 
-        search_space = api.get_search_space(dataset)
-        # only when we perform hpo will there be an incumbent configuration
-        # otherwise take a default configuration.
-        if number_of_configurations_limit != 0:
-            configuration, incumbent_run_value = get_incumbent_results(
-                os.path.join(
-                    temp_dir,
-                    'smac3-output',
-                    'run_{}'.format(seed),
-                    'runhistory.json'),
-                search_space,
-            )
-            print(f"Incumbent configuration: {configuration}")
-            print(f"Incumbent trajectory: {api.trajectory}")
-        else:
-            # default configuration
-            configuration = search_space.get_default_configuration()
-            print(f"Default configuration: {configuration}")
+        configuration, results = api.get_incumbent_results()
+        print(f"Incumbent configuration: {configuration}")
+        print(f"Incumbent results: {results}")
+        # print(f"Incumbent trajectory: {api.trajectory}")
+
+        print(f"Fitting pipeline with {epochs} epochs")
 
         fitted_pipeline, run_info, run_value, dataset = api.fit_pipeline(
             configuration=configuration,
@@ -437,7 +331,8 @@ def well_tuned_simple_nets_metric(X_train, y_train, X_test, y_test, categorical_
             budget=epochs,
             dataset=dataset,
             run_time_limit_secs=func_eval_time,
-            eval_metric='balanced_accuracy',
+            eval_metric='roc_auc',
+            # eval_metric='balanced_accuracy',
             memory_limit=12000,
         )
 
@@ -446,12 +341,11 @@ def well_tuned_simple_nets_metric(X_train, y_train, X_test, y_test, categorical_
         X_test = dataset.test_tensors[0]
         y_test = dataset.test_tensors[1]
 
-
-        test_predictions = fitted_pipeline.predict(X_test)
+        if fitted_pipeline is not None:
+            test_predictions = fitted_pipeline.predict_proba(X_test)
 
         metric = metric_used(y_test, test_predictions.squeeze())
         duration = time.time() - start_time
 
         print(f'Time taken: {duration} for {metric} metric')
         return metric, test_predictions, None
-

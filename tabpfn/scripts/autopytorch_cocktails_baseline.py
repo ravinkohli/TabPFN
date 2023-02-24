@@ -305,7 +305,7 @@ def well_tuned_simple_nets_metric(X_train, y_train, X_test, y_test, categorical_
         from autoPyTorch.datasets.tabular_dataset import TabularDataset
         from autoPyTorch import metrics
         # append random folder to temp_dir to avoid collisions
-        # temp_dir = "/work/dlclarge1/rkohli-run-autopytorch/no_cut_fix_debug"
+        # temp_dir = "/work/dlclarge1/rkohli-run-autopytorch/roc_bug_fix_debug/"
         rand_int = str(random.randint(1,1000))
         temp_dir = os.path.join(temp_dir, 'temp_'+rand_int)
         out_dir = os.path.join(temp_dir, 'out_'+rand_int)
@@ -381,7 +381,9 @@ def well_tuned_simple_nets_metric(X_train, y_train, X_test, y_test, categorical_
             X_test=X_test.copy(),
             y_test=y_test.copy(),
             optimize_metric='roc_auc',
+            # optimize_metric='balanced_accuracy',
             total_walltime_limit=max_time,
+            all_supported_metrics=False,
             memory_limit=12000,
             func_eval_time_limit_secs=min(func_eval_time, max_time),
             enable_traditional_pipeline=False,
@@ -439,6 +441,7 @@ def well_tuned_simple_nets_metric(X_train, y_train, X_test, y_test, categorical_
             dataset=dataset,
             run_time_limit_secs=func_eval_time,
             eval_metric='roc_auc',
+            # eval_metric='balanced_accuracy',
             memory_limit=12000,
         )
 
@@ -448,7 +451,7 @@ def well_tuned_simple_nets_metric(X_train, y_train, X_test, y_test, categorical_
         y_test = dataset.test_tensors[1]
 
         if fitted_pipeline is not None:
-            test_predictions = fitted_pipeline.predict(X_test)
+            test_predictions = fitted_pipeline.predict_proba(X_test)
 
         metric = metric_used(y_test, test_predictions.squeeze())
         duration = time.time() - start_time
